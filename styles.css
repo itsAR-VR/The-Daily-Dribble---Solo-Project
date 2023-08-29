@@ -1,0 +1,64 @@
+.TDD{
+    display: block;
+    text-align: center;
+}
+
+h1{
+    color: #121212;
+}
+img{
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    border: 3px solid #121212;
+    width: 380px
+}
+
+.para{
+    width: 380px;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    font-style: italic;
+    font-size: 16px;
+   
+}
+
+.anchor{
+     color: #121212;
+}
+
+button{
+    width: 258px;
+    line-height: 39px;
+    display: block;
+    margin: 10px;
+    margin-left: auto;
+    margin-right: auto;
+    border: 3px solid #121212;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+input{
+    width: 250px;
+    line-height: 35px;
+    display: block;
+    margin: 10px;
+    margin-left: auto;
+    margin-right: auto;
+    border: 3px solid #121212;
+    font-size: 16px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.email{
+    background-color: #ffffff;
+    color: grey
+}
+
+.join{
+     background-color: #121212;
+     color: white;
+}
