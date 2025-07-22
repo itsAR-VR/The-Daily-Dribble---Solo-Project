@@ -17,7 +17,16 @@ from pathlib import Path
 parent_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(parent_dir))
 
-from multi_platform_listing_bot import run_from_spreadsheet
+# Import the main script - handle different deployment scenarios
+try:
+    from multi_platform_listing_bot import run_from_spreadsheet
+except ImportError:
+    # If in backend directory, try importing from parent
+    import sys
+    import os
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, parent_dir)
+    from multi_platform_listing_bot import run_from_spreadsheet
 
 app = FastAPI(
     title="Multi-Platform Listing Bot API",

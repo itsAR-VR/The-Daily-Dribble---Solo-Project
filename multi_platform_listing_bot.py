@@ -294,12 +294,26 @@ POSTER_MAP: Dict[str, Type[MarketplacePoster]] = {
 
 def create_driver() -> webdriver.Chrome:
     options = webdriver.ChromeOptions()
-    # options.add_argument("--headless")
+    
+    # Add headless mode for deployment environments
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920x1080")
+    
+    # Disable automation detection
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
-    driver = webdriver.Chrome(options=options)
-    driver.maximize_window()
-    return driver
+    
+    try:
+        driver = webdriver.Chrome(options=options)
+        driver.maximize_window()
+        return driver
+    except Exception as e:
+        # Fallback for environments where Chrome setup might be different
+        print(f"Chrome driver creation error: {e}")
+        raise RuntimeError(f"Failed to create Chrome driver: {e}")
 
 
 def process_platform(platform: str, rows: pd.DataFrame, driver: webdriver.Chrome) -> pd.DataFrame:
