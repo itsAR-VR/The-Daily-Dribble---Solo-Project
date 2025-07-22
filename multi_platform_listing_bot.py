@@ -6,7 +6,7 @@ marketplaces. It reads an Excel spreadsheet describing listings and posts
 rows to the appropriate platform using Selenium. The workbook is updated
 with success or error messages in a ``Status`` column.
 
-Platforms supported (via subclasses of :class:`MarketplacePoster`):
+Platforms supported (via subclasses of :class:`MarketplacePoster`):     
     - Hubx
     - GSMExchange
     - Kardof
@@ -323,15 +323,18 @@ def process_platform(platform: str, rows: pd.DataFrame, driver: webdriver.Chrome
     return rows
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Post listings to multiple marketplaces")
-    parser.add_argument("--input", required=True, help="Excel file with listings")
-    parser.add_argument("--output", help="Where to save results (default: overwrite input)")
-    args = parser.parse_args()
-
-    input_path = args.input
-    output_path = args.output or input_path
-
+def run_from_spreadsheet(input_path: str, output_path: str) -> None:
+    """Process listings from an Excel spreadsheet and save results.
+    
+    This function can be imported and used by other modules like a FastAPI app.
+    
+    Parameters
+    ----------
+    input_path : str
+        Path to the input Excel file with listings
+    output_path : str
+        Path where the results Excel file should be saved
+    """
     df = pd.read_excel(input_path)
     if "Status" not in df.columns:
         df["Status"] = ""
@@ -348,6 +351,18 @@ def main() -> None:
         driver.quit()
 
     final_df.to_excel(output_path, index=False)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Post listings to multiple marketplaces")
+    parser.add_argument("--input", required=True, help="Excel file with listings")
+    parser.add_argument("--output", help="Where to save results (default: overwrite input)")
+    args = parser.parse_args()
+
+    input_path = args.input
+    output_path = args.output or input_path
+
+    run_from_spreadsheet(input_path, output_path)
     print(f"Updated listings written to {output_path}")
 
 
