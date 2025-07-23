@@ -19,7 +19,7 @@ try:
 except ImportError:
     # Create a dummy function if import fails
     def run_from_spreadsheet(input_path: str, output_path: str) -> None:
-        raise RuntimeError("Main script not available - check deployment configuration")
+        raise RuntimeError("Chrome/Selenium not available on free tier. Please upgrade to Starter plan ($7/month) for full functionality.")
 
 app = FastAPI(
     title="Multi-Platform Listing Bot API",
