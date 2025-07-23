@@ -15,7 +15,7 @@ from pathlib import Path
 
 # Import the main script
 try:
-    from multi_platform_listing_bot import run_from_spreadsheet
+    from .multi_platform_listing_bot import run_from_spreadsheet
 except ImportError:
     # Create a dummy function if import fails
     def run_from_spreadsheet(input_path: str, output_path: str) -> None:
