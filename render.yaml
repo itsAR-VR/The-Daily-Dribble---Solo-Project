@@ -4,13 +4,10 @@ services:
     name: listing-bot-api
     region: ohio
     plan: free  # Start with free, then upgrade to starter
-    buildCommand: cd backend && ./render-build.sh
-    startCommand: cd backend && python -m uvicorn fastapi_app:app --host 0.0.0.0 --port $PORT
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn backend.fastapi_app:app --host 0.0.0.0 --port $PORT"
     autoDeploy: true
     envVars:
-      # Force Python 3.11 to avoid Cython compatibility issues
-      - key: PYTHON_VERSION
-        value: "3.11.9"
       # Add your marketplace credentials here
       - key: HUBX_USERNAME
         sync: false

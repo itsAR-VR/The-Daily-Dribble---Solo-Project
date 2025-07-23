@@ -45,6 +45,32 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
 # Environments
 .env
 .venv
@@ -54,29 +80,52 @@ ENV/
 env.bak/
 venv.bak/
 
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# Spyder project settings
+.spyderproject
+.spyderworkspace
 
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Rope project settings
+.ropeproject
 
-# Project specific
-backend/jobs/
-*.xlsx
-*.xls 
+# mkdocs documentation
+/site
 
-# Frontend dependencies
-frontend/node_modules
-frontend/.next
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# Ignore everything in the jobs directory inside the backend folder
+backend/jobs/*
+!backend/jobs/.gitkeep
+
+# Ignore Excel files in the backend folder
+backend/*.xlsx
+backend/*.xls
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
 frontend/.pnp
-frontend/.yarn 
+frontend/.pnp.js
+frontend/.pnp.loader.mjs
+frontend/.yarn/
+
+# Production notes
+backend/PRODUCTION_NOTES.md
+
+# Env examples
+backend/.env.example
+
+# Env files
+backend/.env 
