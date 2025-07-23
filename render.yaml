@@ -2,23 +2,34 @@ services:
   - type: web
     runtime: docker
     name: listing-bot-api
-    env: python
     region: ohio
-    plan: starter  # Change from free to starter ($7/month)
-    buildCommand: |
-      # Install Chrome for Selenium
-      STORAGE_DIR=/opt/render/project/.render
-      mkdir -p $STORAGE_DIR/chrome
-      cd $STORAGE_DIR/chrome
-      wget -P ./ https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-      dpkg -x ./google-chrome-stable_current_amd64.deb $STORAGE_DIR/chrome
-      rm ./google-chrome-stable_current_amd64.deb
-      export PATH="${PATH}:/opt/render/project/.render/chrome/opt/google/chrome"
-      cd $HOME/project/src
-      # Copy main script and install Python dependencies
-      cp multi_platform_listing_bot.py backend/ && cd backend && pip install -r requirements.txt
-    startCommand: cd backend && uvicorn fastapi_app:app --host 0.0.0.0 --port $PORT
-    autoDeploy: false
+    plan: starter  # $7/month for Chrome/Selenium support
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./
+    autoDeploy: true
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.9.18 
+      # Add your marketplace credentials here
+      - key: HUBX_USERNAME
+        sync: false
+      - key: HUBX_PASSWORD
+        sync: false
+      - key: GSMEXCHANGE_USERNAME
+        sync: false
+      - key: GSMEXCHANGE_PASSWORD
+        sync: false
+      - key: KARDOF_USERNAME
+        sync: false
+      - key: KARDOF_PASSWORD
+        sync: false
+      - key: CELLPEX_USERNAME
+        sync: false
+      - key: CELLPEX_PASSWORD
+        sync: false
+      - key: HANDLOT_USERNAME
+        sync: false
+      - key: HANDLOT_PASSWORD
+        sync: false
+      - key: LINKEDIN_USERNAME
+        sync: false
+      - key: LINKEDIN_PASSWORD
+        sync: false 
