@@ -3,7 +3,7 @@ services:
     name: listing-bot-api
     env: python
     plan: free
-    buildCommand: cd backend && pip install -r requirements.txt
+    buildCommand: cp multi_platform_listing_bot.py backend/ && cd backend && pip install -r requirements.txt
     startCommand: cd backend && uvicorn fastapi_app:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
