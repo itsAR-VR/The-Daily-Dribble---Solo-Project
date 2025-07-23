@@ -146,3 +146,5 @@ For production deployment, consider:
 - LinkedIn
 
 Each platform requires valid credentials set in environment variables. 
+
+==> Using Python version: 3.10.5
