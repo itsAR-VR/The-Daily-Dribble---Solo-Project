@@ -74,3 +74,9 @@ Thumbs.db
 backend/jobs/
 *.xlsx
 *.xls 
+
+# Frontend dependencies
+frontend/node_modules
+frontend/.next
+frontend/.pnp
+frontend/.yarn 
