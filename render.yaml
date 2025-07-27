@@ -1,13 +1,17 @@
 services:
   - type: web
-    runtime: python3
+    runtime: docker
     name: listing-bot-api
     region: ohio
-    plan: free  # Start with free, then upgrade to starter
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "uvicorn backend.fastapi_app:app --host 0.0.0.0 --port $PORT"
+    plan: starter  # Required for Docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    buildCommand: ''  # Docker handles build
+    startCommand: ''  # Defined in Dockerfile
     autoDeploy: true
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11  # Handled in Dockerfile
       # Add your marketplace credentials here
       - key: HUBX_USERNAME
         sync: false
