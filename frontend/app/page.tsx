@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 
-const API_BASE_URL = "https://listing-bot-api.onrender.com"
+const API_BASE_URL = "https://listing-bot-api-production.up.railway.app/"
 
 type JobStatus = "pending" | "processing" | "completed" | "error"
 
