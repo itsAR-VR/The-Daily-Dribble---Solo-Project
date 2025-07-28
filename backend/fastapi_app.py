@@ -8,10 +8,12 @@ providing HTTP endpoints to submit Excel files and retrieve results.
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import uuid
 import os
 import sys
 from pathlib import Path
+import pandas as pd
 
 # Import the main script
 try:
@@ -164,6 +166,83 @@ def get_listing_status(job_id: str):
         }
     else:
         raise HTTPException(status_code=404, detail="Job not found")
+
+
+class SingleListingRequest(BaseModel):
+    platform: str
+    product_name: str
+    condition: str
+    quantity: int
+    price: float
+
+
+@app.post("/listings/single")
+async def create_single_listing(listing: SingleListingRequest):
+    """
+    Post a single listing to a specific platform.
+    This endpoint handles real-time posting with Selenium.
+    """
+    try:
+        # Validate platform
+        valid_platforms = ["hubx", "gsmexchange", "kardof", "cellpex", "handlot"]
+        if listing.platform not in valid_platforms:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid platform: {listing.platform}. Valid platforms: {valid_platforms}"
+            )
+        
+        # Create a temporary Excel file with single row
+        job_id = str(uuid.uuid4())
+        temp_input = os.path.join(JOBS_DIR, f"temp_{job_id}_input.xlsx")
+        temp_output = os.path.join(JOBS_DIR, f"temp_{job_id}_output.xlsx")
+        
+        # Create DataFrame with single listing
+        df = pd.DataFrame([{
+            'platform': listing.platform,
+            'product_name': listing.product_name,
+            'condition': listing.condition,
+            'quantity': listing.quantity,
+            'price': listing.price
+        }])
+        
+        df.to_excel(temp_input, index=False)
+        
+        # Process the single listing
+        try:
+            run_from_spreadsheet(temp_input, temp_output)
+            
+            # Read the output to check status
+            result_df = pd.read_excel(temp_output)
+            if 'Status' in result_df.columns:
+                status = result_df.iloc[0]['Status']
+                if 'Error' in str(status) or 'Failed' in str(status):
+                    return {
+                        "success": False,
+                        "message": str(status),
+                        "platform": listing.platform,
+                        "product": listing.product_name
+                    }
+            
+            return {
+                "success": True,
+                "message": "Posted successfully",
+                "platform": listing.platform,
+                "product": listing.product_name
+            }
+            
+        finally:
+            # Clean up temp files
+            for f in [temp_input, temp_output]:
+                if os.path.exists(f):
+                    os.unlink(f)
+                    
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "platform": listing.platform,
+            "product": listing.product_name
+        }
 
 
 if __name__ == "__main__":
