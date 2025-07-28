@@ -7,7 +7,7 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     buildCommand: ''  # Docker handles build
-    startCommand: ''  # Defined in Dockerfile
+    startCommand: "uvicorn backend.fastapi_app:app --host 0.0.0.0 --port $PORT"
     autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
