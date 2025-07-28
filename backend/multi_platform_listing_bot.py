@@ -287,7 +287,7 @@ POSTER_MAP: Dict[str, Type[MarketplacePoster]] = {
         KardofPoster,
         CellpexPoster,
         HandlotPoster,
-        LinkedInPoster,
+        # LinkedInPoster,  # Temporarily disabled
     ]
 }
 

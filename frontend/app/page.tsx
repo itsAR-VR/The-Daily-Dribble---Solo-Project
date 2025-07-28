@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 
-const API_BASE_URL = "https://listing-bot-api-production.up.railway.app/"
+const API_BASE_URL = "https://listing-bot-api-production.up.railway.app"
 
 type JobStatus = "pending" | "processing" | "completed" | "error"
 
@@ -47,7 +47,10 @@ export default function ListingBotPage() {
   })
 
   const handleUpload = async () => {
+    console.log("Button clicked! Starting upload...")
+    
     if (!file) {
+      console.log("No file selected")
       toast({
         variant: "destructive",
         title: "No File Selected",
@@ -56,6 +59,7 @@ export default function ListingBotPage() {
       return
     }
 
+    console.log("File found:", file.name)
     setIsUploading(true)
     setJobStatus("pending")
     setStatusMessage("Uploading file...")
@@ -63,13 +67,17 @@ export default function ListingBotPage() {
     const formData = new FormData()
     formData.append("file", file)
 
+    console.log("Making API call to:", `${API_BASE_URL}/listings`)
+    
     try {
       const response = await fetch(`${API_BASE_URL}/listings`, {
         method: "POST",
         body: formData,
       })
 
+      console.log("Response status:", response.status)
       const result = await response.json()
+      console.log("Response data:", result)
 
       if (!response.ok) {
         throw new Error(result.message || "Failed to start listing job.")
@@ -83,6 +91,7 @@ export default function ListingBotPage() {
         description: `Job started with ID: ${result.job_id}`,
       })
     } catch (error: any) {
+      console.error("Upload error:", error)
       setJobStatus("error")
       setStatusMessage(error.message || "An unknown error occurred during upload.")
       toast({
