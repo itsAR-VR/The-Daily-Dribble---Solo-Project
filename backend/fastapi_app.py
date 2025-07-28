@@ -19,7 +19,35 @@ try:
 except ImportError:
     # Create a dummy function if import fails
     def run_from_spreadsheet(input_path: str, output_path: str) -> None:
-        raise RuntimeError("Chrome/Selenium not available on free tier. Please upgrade to Starter plan ($7/month) for full functionality.")
+        raise RuntimeError("Chrome/Selenium not available. Please check deployment configuration.")
+
+# Test Chrome availability on startup
+CHROME_AVAILABLE = True
+try:
+    from .multi_platform_listing_bot import create_driver
+    test_driver = create_driver()
+    test_driver.quit()
+    print("✅ Chrome driver test successful")
+except Exception as e:
+    CHROME_AVAILABLE = False
+    print(f"❌ Chrome driver test failed: {e}")
+    
+    # Create a fallback function
+    def run_from_spreadsheet_fallback(input_path: str, output_path: str) -> None:
+        import pandas as pd
+        
+        # Read the input file
+        df = pd.read_excel(input_path)
+        
+        # Add a status column showing that Chrome is not available
+        df['Status'] = 'Error: Chrome/Selenium not available in deployment environment. Check Railway logs for Chrome installation issues.'
+        
+        # Save the result
+        df.to_excel(output_path, index=False)
+        print(f"Fallback processing complete: {len(df)} rows processed with error status")
+    
+    # Replace the function
+    run_from_spreadsheet = run_from_spreadsheet_fallback
 
 app = FastAPI(
     title="Multi-Platform Listing Bot API",
