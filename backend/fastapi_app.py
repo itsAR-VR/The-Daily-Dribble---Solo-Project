@@ -42,7 +42,7 @@ except Exception as e:
         df = pd.read_excel(input_path)
         
         # Add a status column showing that Chrome is not available
-        df['Status'] = 'Error: Chrome/Selenium not available in deployment environment. Check Railway logs for Chrome installation issues.'
+        df['Status'] = 'Error: Chrome/Selenium not available in deployment environment. Please upgrade hosting plan or use local deployment.'
         
         # Save the result
         df.to_excel(output_path, index=False)
@@ -215,7 +215,7 @@ async def create_single_listing(listing: SingleListingRequest):
             result_df = pd.read_excel(temp_output)
             if 'Status' in result_df.columns:
                 status = result_df.iloc[0]['Status']
-                if 'Error' in str(status) or 'Failed' in str(status):
+                if 'Error' in str(status) or 'Failed' in str(status) or 'Chrome' in str(status):
                     return {
                         "success": False,
                         "message": str(status),

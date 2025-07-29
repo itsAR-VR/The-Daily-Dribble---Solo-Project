@@ -38,6 +38,7 @@ type ListingItem = {
   id: string
   productName: string
   condition: string
+  customCondition: string
   quantity: number
   price: number
   selectedPlatforms: string[]
@@ -63,6 +64,7 @@ export default function ListingBotPage() {
       id: Date.now().toString(),
       productName: "",
       condition: "New",
+      customCondition: "",
       quantity: 1,
       price: 0,
       selectedPlatforms: [],
@@ -153,19 +155,19 @@ export default function ListingBotPage() {
           }
         })
 
-        try {
-          // Call API to post this item to this platform
-          const response = await fetch(`${API_BASE_URL}/listings/single`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              platform: platformId,
-              product_name: item.productName,
-              condition: item.condition,
-              quantity: item.quantity,
-              price: item.price,
-            }),
-          })
+                  try {
+            // Call API to post this item to this platform
+            const response = await fetch(`${API_BASE_URL}/listings/single`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                platform: platformId,
+                product_name: item.productName,
+                condition: item.condition === "other" ? item.customCondition : item.condition,
+                quantity: item.quantity,
+                price: item.price,
+              }),
+            })
 
           const result = await response.json()
 
@@ -247,27 +249,45 @@ export default function ListingBotPage() {
                       {/* Condition */}
                       <div className="space-y-2">
                         <Label>Condition</Label>
-                        <Select
-                          value={item.condition}
-                          onValueChange={(value) => updateItem(item.id, { condition: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {CONDITIONS.map((condition) => (
-                              <SelectItem key={condition} value={condition}>
-                                {condition}
-                              </SelectItem>
-                            ))}
-                            <SelectItem value="other">Other (Custom)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {item.condition === "other" && (
-                          <Input
-                            placeholder="Enter custom condition"
-                            onChange={(e) => updateItem(item.id, { condition: e.target.value })}
-                          />
+                        {item.condition === "other" ? (
+                          <div className="space-y-2">
+                            <Input
+                              value={item.customCondition}
+                              onChange={(e) => updateItem(item.id, { customCondition: e.target.value })}
+                              placeholder="Enter custom condition"
+                              autoFocus
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => updateItem(item.id, { condition: "New", customCondition: "" })}
+                            >
+                              Back to dropdown
+                            </Button>
+                          </div>
+                        ) : (
+                          <Select
+                            value={item.condition}
+                            onValueChange={(value) => {
+                              if (value === "other") {
+                                updateItem(item.id, { condition: "other" })
+                              } else {
+                                updateItem(item.id, { condition: value, customCondition: "" })
+                              }
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CONDITIONS.map((condition) => (
+                                <SelectItem key={condition} value={condition}>
+                                  {condition}
+                                </SelectItem>
+                              ))}
+                              <SelectItem value="other">Other (Custom)</SelectItem>
+                            </SelectContent>
+                          </Select>
                         )}
                       </div>
                     </div>
