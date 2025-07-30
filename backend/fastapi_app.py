@@ -181,6 +181,18 @@ PLATFORM_FIELD_MAPPINGS = {
         "stock": "quantity",
         "description": "description"
     },
+    "gsmexchange": {
+        # GSM Exchange specific mappings
+        "model_name": ["brand", "product_name", "memory", "color"],  # Combine into model field
+        "quantity": "quantity",
+        "price": "price",
+        "currency": "currency",
+        "condition": "condition",
+        "specification": "market_spec",  # Maps to regional specs
+        "comments": ["description", "sim_lock_status", "carrier", "lcd_defects", "quality_certification"],  # Combine details
+        "listing_type": "sell",  # Always "I want to sell"
+        "stock_confirmation": True  # Always confirm stock
+    },
     # Add mappings for other platforms...
 }
 
@@ -615,11 +627,64 @@ def map_to_platform_fields(platform: str, data: ComprehensiveListingData) -> Dic
                 value = getattr(data, field, "")
                 if value:
                     values.append(str(value))
-            result[platform_field] = " ".join(values)
+            
+            # Special handling for GSM Exchange comments field
+            if platform == "gsmexchange" and platform_field == "comments":
+                comments_parts = []
+                if data.description:
+                    comments_parts.append(data.description)
+                
+                # Add technical details
+                tech_details = []
+                if data.sim_lock_status and data.sim_lock_status != "Unlocked":
+                    tech_details.append(f"SIM Lock: {data.sim_lock_status}")
+                if data.carrier:
+                    tech_details.append(f"Carrier: {data.carrier}")
+                if data.lcd_defects and data.lcd_defects != "None":
+                    tech_details.append(f"LCD: {data.lcd_defects}")
+                if data.quality_certification:
+                    tech_details.append(f"Certification: {data.quality_certification}")
+                
+                if tech_details:
+                    comments_parts.append("Technical details: " + ", ".join(tech_details))
+                
+                result[platform_field] = "\n\n".join(comments_parts)
+            else:
+                result[platform_field] = " ".join(values)
+        elif isinstance(data_field, bool):
+            # Static boolean values
+            result[platform_field] = data_field
+        elif isinstance(data_field, str) and data_field in ["sell", "buy"]:
+            # Static string values
+            result[platform_field] = data_field
         else:
             # Direct mapping
             value = getattr(data, data_field, "")
-            if isinstance(value, list):
+            
+            # Special condition mapping for GSM Exchange
+            if platform == "gsmexchange" and platform_field == "condition":
+                condition_mapping = {
+                    "New": "New",
+                    "Used": "Used and tested",
+                    "Refurbished": "Refurbished", 
+                    "Damaged": "ASIS",
+                    "14-Days": "14 day"
+                }
+                result[platform_field] = condition_mapping.get(value, value)
+            
+            # Special specification mapping for GSM Exchange
+            elif platform == "gsmexchange" and platform_field == "specification":
+                spec_mapping = {
+                    "US": "US spec.",
+                    "Euro": "Euro spec.",
+                    "UK": "UK spec.",
+                    "Asia": "Asia spec.",
+                    "Arabic": "Arab spec.",
+                    "Other": "Other spec."
+                }
+                result[platform_field] = spec_mapping.get(value, "Global Spec.")
+            
+            elif isinstance(value, list):
                 result[platform_field] = ", ".join(value)
             else:
                 result[platform_field] = value

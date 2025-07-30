@@ -37,6 +37,12 @@ const CATEGORIES = {
 }
 
 const CONDITIONS = ["New", "Used", "Refurbished", "Damaged", "14-Days"]
+const GSM_CONDITIONS = ["New", "ASIS", "Used and tested", "Refurbished", "7 day", "14 day", "CPO", "Pre order"]
+const GSM_SPECIFICATIONS = [
+  "Euro spec.", "Asia spec.", "US spec.", "UK spec.", "Arab spec.", 
+  "African spec.", "Latin spec.", "Indian spec.", "Other spec.", 
+  "Japanese spec.", "China spec.", "Australia spec.", "Canada Spec.", "Global Spec."
+]
 const CONDITION_GRADES = ["A", "B", "C", "D"]
 const LCD_DEFECTS = ["None", "Spot", "Line", "Light Burn-in", "Noticeable Burn-in"]
 const MEMORY_OPTIONS = ["4GB", "8GB", "16GB", "32GB", "64GB", "128GB", "256GB", "512GB", "1TB", "2TB"]
