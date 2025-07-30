@@ -327,14 +327,14 @@ export default function ListingBotUI() {
 
   return (
     <div className="container mx-auto p-6 max-w-6xl">
-      <Card>
-        <CardHeader>
+          <Card>
+            <CardHeader>
           <CardTitle>Multi-Platform Listing Bot</CardTitle>
-          <CardDescription>
+              <CardDescription>
             Create comprehensive listings with AI-powered enrichment
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
           {items.map((item, index) => (
             <Card key={item.id} className="p-6 space-y-6">
               <div className="flex justify-between items-center">
@@ -702,8 +702,8 @@ export default function ListingBotUI() {
                           })}
                         >
                           <Plus className="h-4 w-4" />
-                        </Button>
-                      </div>
+                  </Button>
+                </div>
                     </div>
 
                     {/* Minimum Order Quantity */}
@@ -1053,13 +1053,13 @@ export default function ListingBotUI() {
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 Processing...
-              </>
-            ) : (
-              "Submit for Processing"
-            )}
-          </Button>
-        </CardContent>
-      </Card>
+                  </>
+                ) : (
+                  "Submit for Processing"
+                )}
+              </Button>
+            </CardContent>
+          </Card>
     </div>
   )
 }

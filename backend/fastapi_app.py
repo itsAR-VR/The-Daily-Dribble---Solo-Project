@@ -223,7 +223,7 @@ Write a compelling product description:
             """
             
             response = client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o",  # GPT-4.1 is accessed via gpt-4o model name
                 messages=[
                     {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
                     {"role": "user", "content": prompt}
@@ -298,7 +298,7 @@ Return as comma-separated list only:
             """
             
             response = client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o",  # GPT-4.1 is accessed via gpt-4o model name
                 messages=[
                     {"role": "system", "content": "You are an SEO expert for marketplace listings. Generate keywords that maximize search visibility."},
                     {"role": "user", "content": prompt}
