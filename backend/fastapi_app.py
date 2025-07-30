@@ -17,7 +17,13 @@ import pandas as pd
 from typing import Dict, List, Optional, Any
 import json
 from datetime import datetime
-import openai  # You'll need to add this to requirements.txt
+# OpenAI import - conditional based on availability
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    print("OpenAI not available. AI features will use fallback generation.")
 
 # Import the main script
 try:
@@ -181,28 +187,85 @@ PLATFORM_FIELD_MAPPINGS = {
 
 def generate_ai_description(data: ComprehensiveListingData) -> str:
     """Generate AI-powered description based on product data"""
-    # This is a placeholder - you would integrate with OpenAI or another AI service
+    if OPENAI_AVAILABLE and os.environ.get("OPENAI_API_KEY"):
+        try:
+            # Set up OpenAI client
+            client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+            
+            # Create prompt for AI description
+            prompt = f"""
+Create a professional marketplace listing description for:
+
+Product: {data.brand} {data.product_name}
+Category: {data.category}
+Condition: {data.condition} (Grade {data.condition_grade})
+Memory: {data.memory}
+Color: {data.color}
+Market: {data.market_spec}
+SIM Lock: {data.sim_lock_status}
+Carrier: {data.carrier or 'Unlocked'}
+LCD Defects: {data.lcd_defects}
+Packaging: {data.packaging}
+Weight: {data.item_weight}{data.weight_unit}
+Delivery: {data.delivery_days} days
+Payment: {', '.join(data.accepted_payments)}
+
+Requirements:
+- Professional tone
+- Highlight key features
+- Mention condition clearly
+- Include shipping info
+- 200-300 words
+- Appeal to buyers
+- Include technical specs
+
+Write a compelling product description:
+            """
+            
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=400,
+                temperature=0.7
+            )
+            
+            return response.choices[0].message.content.strip()
+            
+        except Exception as e:
+            print(f"OpenAI API error: {e}")
+            # Fall back to template-based description
+    
+    # Fallback template-based description
     description = f"""
-{data.brand} {data.product_name} - {data.condition} Condition
+Professional {data.brand} {data.product_name} in {data.condition.lower()} condition.
 
-Key Features:
-- Memory: {data.memory}
-- Color: {data.color}
-- Market: {data.market_spec}
-- SIM Lock: {data.sim_lock_status}
-{'- Carrier: ' + data.carrier if data.carrier else ''}
+🔧 Technical Specifications:
+• Memory/Storage: {data.memory}
+• Color: {data.color}
+• Market Specification: {data.market_spec}
+• SIM Lock Status: {data.sim_lock_status}
+{'• Carrier: ' + data.carrier if data.carrier else '• Fully Unlocked'}
 
-Condition: Grade {data.condition_grade}
-LCD: {data.lcd_defects}
+📋 Condition Details:
+• Overall Grade: {data.condition_grade}
+• LCD Screen: {data.lcd_defects}
+• Quality Certification: {data.quality_certification or 'Standard'}
 
-Shipping:
-- Packaging: {data.packaging}
-- Weight: {data.item_weight}{data.weight_unit}
-- Incoterm: {data.incoterm}
-- Delivery: {data.delivery_days} days
-{'- Local pickup available' if data.allow_local_pickup else ''}
+📦 Shipping & Packaging:
+• Original Packaging: {data.packaging}
+• Item Weight: {data.item_weight}{data.weight_unit}
+• Shipping Terms: {data.incoterm}
+• Delivery Time: {data.delivery_days} business days
+{'• Local Pickup Available' if data.allow_local_pickup else ''}
+
+💳 Payment Options: {', '.join(data.accepted_payments)}
 
 {data.description if data.description else ''}
+
+Perfect for resale or personal use. Fast shipping and secure payment processing guaranteed.
     """.strip()
     
     return description
@@ -210,11 +273,52 @@ Shipping:
 
 def generate_ai_keywords(data: ComprehensiveListingData) -> List[str]:
     """Generate AI-powered keywords based on product data"""
+    if OPENAI_AVAILABLE and os.environ.get("OPENAI_API_KEY"):
+        try:
+            client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+            
+            prompt = f"""
+Generate SEO-optimized keywords for this marketplace listing:
+
+Product: {data.brand} {data.product_name}
+Category: {data.category}
+Memory: {data.memory}
+Color: {data.color}
+Condition: {data.condition}
+Market: {data.market_spec}
+
+Generate 15-20 relevant keywords that buyers would search for. Include:
+- Brand and model variations
+- Technical specifications
+- Condition-related terms
+- Common search terms
+- Category keywords
+
+Return as comma-separated list only:
+            """
+            
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an SEO expert for marketplace listings. Generate keywords that maximize search visibility."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=200,
+                temperature=0.5
+            )
+            
+            ai_keywords = [k.strip().lower() for k in response.choices[0].message.content.split(',')]
+            return ai_keywords[:20]  # Limit to 20 keywords
+            
+        except Exception as e:
+            print(f"OpenAI API error for keywords: {e}")
+    
+    # Fallback keyword generation
     keywords = []
     
     # Add basic keywords
     if data.brand:
-        keywords.append(data.brand.lower())
+        keywords.extend([data.brand.lower(), data.brand.lower().replace(' ', '')])
     if data.product_name:
         keywords.extend(data.product_name.lower().split())
     if data.model_code:
@@ -222,31 +326,37 @@ def generate_ai_keywords(data: ComprehensiveListingData) -> List[str]:
     
     # Add spec keywords
     if data.memory:
-        keywords.append(data.memory.lower())
+        keywords.extend([data.memory.lower(), data.memory.lower().replace('gb', '').replace('tb', '')])
     if data.color:
         keywords.append(data.color.lower())
     if data.condition:
-        keywords.append(data.condition.lower())
+        keywords.extend([data.condition.lower(), 'good condition', 'working'])
     
     # Add category keywords
     if data.category:
         keywords.append(data.category.lower())
     
+    # Add common search terms
+    keywords.extend(['phone', 'mobile', 'smartphone', 'device', 'electronics'])
+    
     # Remove duplicates and return
-    return list(set(keywords))
+    return list(set([k for k in keywords if k and len(k) > 1]))[:15]
 
 
 @app.get("/")
 async def read_root():
     chrome_status = "available" if CHROME_AVAILABLE else "not available"
+    openai_status = "available" if OPENAI_AVAILABLE and os.environ.get("OPENAI_API_KEY") else "not available"
     return {
         "message": "Multi-Platform Listing Bot API",
         "chrome_status": chrome_status,
+        "openai_status": openai_status,
+        "ai_features": "enabled" if openai_status == "available" else "fallback mode",
         "endpoints": {
             "POST /listings": "Upload Excel file for batch processing",
             "GET /listings/{job_id}": "Get job status and results",
             "POST /listings/single": "Post a single listing",
-            "POST /listings/enhanced": "Post with comprehensive data"
+            "POST /listings/enhanced": "Post with comprehensive data and AI enrichment"
         }
     }
 
