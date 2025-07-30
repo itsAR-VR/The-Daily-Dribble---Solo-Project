@@ -333,7 +333,7 @@ def create_driver() -> webdriver.Chrome:
             service = Service(chromedriver_path)
             driver = webdriver.Chrome(service=service, options=options)
         else:
-        driver = webdriver.Chrome(options=options)
+            driver = webdriver.Chrome(options=options)
             
         return driver
     except Exception as e:
