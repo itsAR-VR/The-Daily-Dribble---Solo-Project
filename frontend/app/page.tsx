@@ -116,7 +116,7 @@ type ComprehensiveListingItem = {
   
   // Additional
   privateNotes: string
-  manufacturerType: "OEM" | "ODM" | ""
+  manufacturerType: "OEM" | "ODM" | "not_specified"
 }
 
 export default function ListingBotUI() {
@@ -135,7 +135,7 @@ export default function ListingBotUI() {
     const newItem: ComprehensiveListingItem = {
       id: Date.now().toString(),
       productType: "phone",
-      category: "",
+      category: "Smartphones",
       brand: "",
       productName: "",
       modelCode: "",
@@ -172,7 +172,7 @@ export default function ListingBotUI() {
       selectedPlatforms: [],
       platformStatuses: {},
       privateNotes: "",
-      manufacturerType: ""
+      manufacturerType: "not_specified"
     }
     setItems([...items, newItem])
   }
@@ -354,7 +354,7 @@ export default function ListingBotUI() {
                       <Select
                         value={item.productType}
                         onValueChange={(value: "phone" | "accessory" | "gadget") => 
-                          updateItem(item.id, { productType: value, category: "" })
+                          updateItem(item.id, { productType: value, category: value === "phone" ? "Smartphones" : value === "accessory" ? "Antennas" : "Accessories" })
                         }
                       >
                         <SelectTrigger>
@@ -425,7 +425,7 @@ export default function ListingBotUI() {
                       <Label>Manufacturer Type</Label>
                       <Select
                         value={item.manufacturerType}
-                        onValueChange={(value: "OEM" | "ODM" | "") => 
+                        onValueChange={(value: "OEM" | "ODM" | "not_specified") => 
                           updateItem(item.id, { manufacturerType: value })
                         }
                       >
@@ -433,7 +433,7 @@ export default function ListingBotUI() {
                           <SelectValue placeholder="Select type" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Not specified</SelectItem>
+                          <SelectItem value="not_specified">Not specified</SelectItem>
                           <SelectItem value="OEM">OEM</SelectItem>
                           <SelectItem value="ODM">ODM</SelectItem>
                         </SelectContent>
