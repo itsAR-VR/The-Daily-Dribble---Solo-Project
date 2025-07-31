@@ -177,6 +177,52 @@ export default function ListingBotUI() {
     setItems([...items, newItem])
   }
 
+  const fillExampleData = (itemId: string) => {
+    const exampleData = {
+      productType: "phone" as const,
+      category: "Smartphones",
+      brand: "Apple",
+      productName: "iPhone 14 Pro",
+      modelCode: "A2890",
+      condition: "Used",
+      customCondition: "",
+      conditionGrade: "A",
+      lcdDefects: "None",
+      qualityCertification: "CE, FCC, IC",
+      memory: "256GB",
+      color: "Deep Purple",
+      marketSpec: "US",
+      simLockStatus: "Unlocked",
+      carrier: "AT&T",
+      price: 899.99,
+      currency: "USD",
+      quantity: 5,
+      minimumOrderQuantity: 1,
+      supplyAbility: "100 units/month",
+      packaging: "Original Box",
+      itemWeight: 0.206,
+      weightUnit: "kg",
+      incoterm: "EXW",
+      allowLocalPickup: true,
+      deliveryDays: 3,
+      country: "United States",
+      state: "California",
+      description: "Premium iPhone 14 Pro in excellent condition. Features the powerful A16 Bionic chip, Pro camera system with 48MP main camera, and stunning Super Retina XDR display. Unlocked and ready to use with any carrier. Includes original box, charging cable, and documentation.",
+      keywords: ["iPhone", "Apple", "smartphone", "unlocked", "256GB", "Deep Purple", "A16", "Pro camera"],
+      acceptedPayments: ["PayPal", "Wire TT"],
+      autoShareLinkedIn: false,
+      autoShareTwitter: false,
+      selectedPlatforms: ["gsmexchange", "cellpex"],
+      privateNotes: "High-demand model, excellent margins",
+      manufacturerType: "OEM" as const
+    }
+    
+    updateItem(itemId, exampleData)
+    
+    // Show a quick confirmation
+    console.log("✅ Example data filled! Ready for testing.")
+  }
+
   const updateItem = (id: string, updates: Partial<ComprehensiveListingItem>) => {
     setItems(items.map(item => (item.id === id ? { ...item, ...updates } : item)))
   }
@@ -327,14 +373,24 @@ export default function ListingBotUI() {
             <Card key={item.id} className="p-6 space-y-6">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Item {index + 1}</h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeItem(item.id)}
-                >
-                  <X className="h-4 w-4" />
-                  Remove
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fillExampleData(item.id)}
+                  >
+                    <Upload className="h-4 w-4 mr-1" />
+                    Fill Example
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeItem(item.id)}
+                  >
+                    <X className="h-4 w-4" />
+                    Remove
+                  </Button>
+                </div>
               </div>
 
               <Tabs defaultValue="basic" className="w-full">
@@ -1030,6 +1086,15 @@ export default function ListingBotUI() {
           >
             <Plus className="h-4 w-4 mr-2" />
             Add New Item
+          </Button>
+
+          <Button
+            onClick={() => items.forEach(item => fillExampleData(item.id))}
+            variant="outline"
+            className="w-full"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Fill Example Data for All Items
           </Button>
 
           <Button
