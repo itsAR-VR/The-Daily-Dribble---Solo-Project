@@ -29,7 +29,50 @@ HANDLOT_PASSWORD=your_handlot_password
 
 LINKEDIN_USERNAME=your_linkedin_username
 LINKEDIN_PASSWORD=your_linkedin_password
+
+# Gmail API for 2FA code retrieval (optional)
+GMAIL_TARGET_EMAIL=your-email@gmail.com
+GMAIL_SERVICE_ACCOUNT_JSON='{"type": "service_account", "project_id": "...", ...}'
+
+# OpenAI API for AI-enhanced descriptions (optional)
+OPENAI_API_KEY=your_openai_api_key
 ```
+
+### Gmail API Setup (Optional - for automatic 2FA handling)
+
+The bot can automatically retrieve 2FA verification codes from Gmail for platforms that require them (like GSM Exchange and Cellpex). To enable this:
+
+1. **Create Google Cloud Project**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com)
+   - Create a new project or select existing one
+
+2. **Enable Gmail API**:
+   - Go to APIs & Services > Library
+   - Search for "Gmail API" and enable it
+
+3. **Create Service Account**:
+   - Go to APIs & Services > Credentials
+   - Click "Create Credentials" > "Service Account"
+   - Download the JSON key file
+
+4. **Enable Domain-Wide Delegation**:
+   - In the service account settings, enable "G Suite Domain-wide Delegation"
+   - Note the Client ID
+
+5. **Authorize Service Account** (for Google Workspace):
+   - Go to Google Admin Console > Security > API Controls > Domain-wide Delegation
+   - Add the Client ID and scope: `https://www.googleapis.com/auth/gmail.send`
+
+6. **Set Environment Variables**:
+   ```bash
+   GMAIL_TARGET_EMAIL=your-email@gmail.com
+   GMAIL_SERVICE_ACCOUNT_JSON='{"type": "service_account", ...}'  # Full JSON content
+   ```
+
+7. **Test Configuration**:
+   ```bash
+   python setup_gmail_env_template.py
+   ```
 
 ## Running the Server
 

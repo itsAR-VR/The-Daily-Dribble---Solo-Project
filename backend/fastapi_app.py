@@ -33,6 +33,15 @@ except ImportError:
     def run_from_spreadsheet(input_path: str, output_path: str) -> None:
         raise RuntimeError("Chrome/Selenium not available. Please check deployment configuration.")
 
+# Import Gmail service
+try:
+    from .gmail_service import gmail_service
+    GMAIL_AVAILABLE = gmail_service.is_available()
+except ImportError:
+    GMAIL_AVAILABLE = False
+    gmail_service = None
+    print("Gmail service not available. 2FA code retrieval will be disabled.")
+
 # Test Chrome availability on startup
 CHROME_AVAILABLE = True
 try:
@@ -359,16 +368,20 @@ Return as comma-separated list only:
 async def read_root():
     chrome_status = "available" if CHROME_AVAILABLE else "not available"
     openai_status = "available" if OPENAI_AVAILABLE and os.environ.get("OPENAI_API_KEY") else "not available"
+    gmail_status = "available" if GMAIL_AVAILABLE else "not available"
     return {
         "message": "Multi-Platform Listing Bot API",
         "chrome_status": chrome_status,
         "openai_status": openai_status,
+        "gmail_status": gmail_status,
         "ai_features": "enabled" if openai_status == "available" else "fallback mode",
+        "2fa_automation": "enabled" if gmail_status == "available" else "manual intervention required",
         "endpoints": {
             "POST /listings": "Upload Excel file for batch processing",
             "GET /listings/{job_id}": "Get job status and results",
             "POST /listings/single": "Post a single listing",
-            "POST /listings/enhanced": "Post with comprehensive data and AI enrichment"
+            "POST /listings/enhanced": "Post with comprehensive data and AI enrichment",
+            "POST /listings/enhanced-visual": "Post with visual browser automation feedback"
         }
     }
 
@@ -650,13 +663,39 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
         
         # Step 3: Login check (if needed)
         if platform in ["gsmexchange", "cellpex"]:
+            email_check_message = "Checking Gmail for verification code..."
+            verification_code = None
+            gmail_check_status = "action_required"
+            
+            if GMAIL_AVAILABLE and gmail_service:
+                try:
+                    # Actually check Gmail for verification codes
+                    email_check_message = f"Searching Gmail for {platform} verification codes..."
+                    verification_code = gmail_service.get_latest_verification_code(platform)
+                    
+                    if verification_code:
+                        email_check_message = f"✅ Found verification code: {verification_code}"
+                        gmail_check_status = "completed"
+                    else:
+                        email_check_message = "⏳ No recent verification code found. Monitoring for new emails..."
+                        gmail_check_status = "monitoring"
+                        
+                except Exception as e:
+                    email_check_message = f"❌ Gmail check failed: {str(e)}"
+                    gmail_check_status = "error"
+            else:
+                email_check_message = "⚠️ Gmail service not available - manual 2FA required"
+                gmail_check_status = "manual_required"
+            
             browser_steps.append({
                 "step": "login_check",
-                "status": "action_required",
+                "status": gmail_check_status,
                 "message": "2FA code may be required - checking email",
                 "screenshot": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZmZmIi8+CiAgICA8dGV4dCB4PSIyMDAiIHk9IjE1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzMzMyIgZm9udC1zaXplPSIxOCI+TG9naW4gUGFnZTwvdGV4dD4KPC9zdmc+",
                 "requires_2fa": True,
-                "email_check": "Checking Gmail for verification code..."
+                "email_check": email_check_message,
+                "verification_code": verification_code,
+                "gmail_available": GMAIL_AVAILABLE
             })
         
         # Step 4: Filling form
@@ -839,6 +878,68 @@ def map_to_platform_fields(platform: str, data: ComprehensiveListingData) -> Dic
                 result[platform_field] = value
     
     return result
+
+
+@app.get("/gmail/status")
+async def get_gmail_status():
+    """Get Gmail service status and configuration details."""
+    if not GMAIL_AVAILABLE or not gmail_service:
+        return {
+            "available": False,
+            "status": "not_configured",
+            "message": "Gmail service not available. Check environment variables.",
+            "required_env_vars": [
+                "GMAIL_TARGET_EMAIL",
+                "GMAIL_SERVICE_ACCOUNT_JSON"
+            ]
+        }
+    
+    return {
+        "available": True,
+        "status": "configured",
+        "target_email": gmail_service.target_email,
+        "message": "Gmail service is properly configured",
+        "features": [
+            "2FA code retrieval",
+            "Verification code extraction",
+            "Platform-specific email monitoring"
+        ]
+    }
+
+
+@app.post("/gmail/test-search")
+async def test_gmail_search(platform: str = "gsmexchange"):
+    """Test Gmail search functionality for a specific platform."""
+    if not GMAIL_AVAILABLE or not gmail_service:
+        return {
+            "success": False,
+            "message": "Gmail service not available"
+        }
+    
+    try:
+        # Search for verification codes
+        codes = gmail_service.search_verification_codes(platform, minutes_back=60)
+        
+        # Get the latest code
+        latest_code = gmail_service.get_latest_verification_code(platform)
+        
+        return {
+            "success": True,
+            "platform": platform,
+            "total_codes_found": len(codes),
+            "latest_code": latest_code,
+            "search_details": {
+                "target_email": gmail_service.target_email,
+                "search_timeframe": "60 minutes",
+                "codes_found": codes[:3]  # Return first 3 for privacy
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Gmail search test failed: {str(e)}"
+        }
 
 
 if __name__ == "__main__":
