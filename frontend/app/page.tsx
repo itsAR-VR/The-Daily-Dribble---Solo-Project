@@ -277,7 +277,8 @@ export default function ListingBotUI() {
     for (const item of items) {
       if (item.selectedPlatforms.length === 0) continue
 
-      for (const platformId of item.selectedPlatforms) {
+      // Process platforms in parallel
+      const platformPromises = item.selectedPlatforms.map(async (platformId) => {
         updateItem(item.id, {
           platformStatuses: {
             ...item.platformStatuses,
@@ -286,7 +287,7 @@ export default function ListingBotUI() {
         })
 
         try {
-          const response = await fetch(`${API_BASE_URL}/listings/enhanced`, {
+          const response = await fetch(`${API_BASE_URL}/listings/enhanced-visual`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -333,6 +334,24 @@ export default function ListingBotUI() {
 
           const result = await response.json()
 
+          // Log browser automation steps for visualization
+          if (result.browser_steps) {
+            console.group(`🌐 Browser Automation: ${platformId}`)
+            result.browser_steps.forEach((step: any) => {
+              const emoji = step.status === 'success' ? '✅' : 
+                           step.status === 'error' ? '❌' : 
+                           step.status === 'action_required' ? '⚠️' : '⏳'
+              console.log(`${emoji} ${step.message}`)
+              if (step.requires_2fa) {
+                console.log('🔐 2FA Required - Checking email for verification code...')
+              }
+              if (step.fields_filled) {
+                console.table(step.fields_filled)
+              }
+            })
+            console.groupEnd()
+          }
+
           updateItem(item.id, {
             platformStatuses: {
               ...item.platformStatuses,
@@ -353,10 +372,15 @@ export default function ListingBotUI() {
             },
           })
         }
-      }
+      })
+
+      // Wait for all platforms to complete for this item
+      await Promise.all(platformPromises)
+      console.log(`✨ All platforms processed for ${item.productName}`)
     }
 
     setIsProcessing(false)
+    console.log('🎯 All items and platforms processed!')
   }
 
   return (
