@@ -942,6 +942,63 @@ async def test_gmail_search(platform: str = "gsmexchange"):
         }
 
 
+@app.get("/debug/environment")
+async def debug_environment():
+    """Debug endpoint to check environment variable configuration."""
+    import json
+    
+    # Check environment variables
+    target_email = os.environ.get("GMAIL_TARGET_EMAIL")
+    service_account_json = os.environ.get("GMAIL_SERVICE_ACCOUNT_JSON")
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    
+    debug_info = {
+        "environment_variables": {
+            "GMAIL_TARGET_EMAIL": "✅ SET" if target_email else "❌ NOT SET",
+            "GMAIL_SERVICE_ACCOUNT_JSON": "✅ SET" if service_account_json else "❌ NOT SET",
+            "OPENAI_API_KEY": "✅ SET" if openai_key else "❌ NOT SET"
+        },
+        "service_status": {
+            "gmail_service_available": GMAIL_AVAILABLE,
+            "chrome_available": CHROME_AVAILABLE,
+            "openai_available": OPENAI_AVAILABLE
+        }
+    }
+    
+    # Additional Gmail JSON validation
+    if service_account_json:
+        try:
+            credentials_data = json.loads(service_account_json)
+            debug_info["gmail_json_validation"] = {
+                "valid_json": True,
+                "type": credentials_data.get("type"),
+                "project_id": credentials_data.get("project_id"),
+                "client_email": credentials_data.get("client_email"),
+                "has_private_key": bool(credentials_data.get("private_key")),
+                "has_client_id": bool(credentials_data.get("client_id"))
+            }
+        except json.JSONDecodeError as e:
+            debug_info["gmail_json_validation"] = {
+                "valid_json": False,
+                "error": str(e),
+                "suggestion": "Check JSON formatting - should be single line with escaped quotes"
+            }
+    else:
+        debug_info["gmail_json_validation"] = {
+            "valid_json": False,
+            "error": "GMAIL_SERVICE_ACCOUNT_JSON not set"
+        }
+    
+    # Additional target email validation
+    if target_email:
+        debug_info["target_email_details"] = {
+            "email": target_email,
+            "valid_format": "@" in target_email and "." in target_email
+        }
+    
+    return debug_info
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
