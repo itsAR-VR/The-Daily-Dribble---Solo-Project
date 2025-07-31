@@ -952,10 +952,14 @@ async def debug_environment():
     service_account_json = os.environ.get("GMAIL_SERVICE_ACCOUNT_JSON")
     openai_key = os.environ.get("OPENAI_API_KEY")
     
+    # Debug: Check if test variable exists
+    test_json = os.environ.get("GMAIL_SERVICE_ACCOUNT_JSON_TEST")
+    
     debug_info = {
         "environment_variables": {
             "GMAIL_TARGET_EMAIL": "✅ SET" if target_email else "❌ NOT SET",
             "GMAIL_SERVICE_ACCOUNT_JSON": "✅ SET" if service_account_json else "❌ NOT SET",
+            "GMAIL_SERVICE_ACCOUNT_JSON_TEST": "✅ SET" if test_json else "❌ NOT SET",
             "OPENAI_API_KEY": "✅ SET" if openai_key else "❌ NOT SET"
         },
         "service_status": {
