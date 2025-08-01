@@ -250,6 +250,17 @@ class GmailService:
     
     def is_available(self) -> bool:
         """Check if Gmail service is properly initialized and available."""
+        # If service is not available, try to reinitialize
+        if self.service is None:
+            print("🔄 Gmail service not available, attempting reinitialization...")
+            self._initialize_service()
+        return self.service is not None
+    
+    def force_reinitialize(self) -> bool:
+        """Force reinitialize the Gmail service with current environment variables."""
+        print("🔄 Force reinitializing Gmail service...")
+        self.service = None
+        self._initialize_service()
         return self.service is not None
 
 

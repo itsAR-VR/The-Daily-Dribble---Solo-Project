@@ -907,10 +907,27 @@ async def get_gmail_status():
     }
 
 
+@app.post("/gmail/reinitialize")
+async def reinitialize_gmail_service():
+    """Force reinitialize Gmail service with current environment variables."""
+    if not gmail_service:
+        return {
+            "success": False,
+            "message": "Gmail service module not available"
+        }
+    
+    success = gmail_service.force_reinitialize()
+    return {
+        "success": success,
+        "message": "Gmail service reinitialized successfully" if success else "Gmail service reinitialization failed",
+        "using_individual_vars": True
+    }
+
+
 @app.post("/gmail/test-search")
 async def test_gmail_search(platform: str = "gsmexchange"):
     """Test Gmail search functionality for a specific platform."""
-    if not GMAIL_AVAILABLE or not gmail_service:
+    if not gmail_service or not gmail_service.is_available():
         return {
             "success": False,
             "message": "Gmail service not available"
