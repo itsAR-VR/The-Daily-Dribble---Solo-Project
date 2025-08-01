@@ -949,18 +949,31 @@ async def debug_environment():
     
     # Check environment variables
     target_email = os.environ.get("GMAIL_TARGET_EMAIL")
-    service_account_json = os.environ.get("GMAIL_SERVICE_ACCOUNT_JSON")
     openai_key = os.environ.get("OPENAI_API_KEY")
     
-    # Debug: Check if test variable exists
+    # Check individual Google service account variables (new approach)
+    google_vars = {
+        "GOOGLE_SERVICE_ACCOUNT_TYPE": os.environ.get("GOOGLE_SERVICE_ACCOUNT_TYPE"),
+        "GOOGLE_SERVICE_ACCOUNT_PROJECT_ID": os.environ.get("GOOGLE_SERVICE_ACCOUNT_PROJECT_ID"),
+        "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_ID": os.environ.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_ID"),
+        "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY": os.environ.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"),
+        "GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL": os.environ.get("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL"),
+        "GOOGLE_SERVICE_ACCOUNT_CLIENT_ID": os.environ.get("GOOGLE_SERVICE_ACCOUNT_CLIENT_ID"),
+    }
+    
+    # Legacy variables for comparison
+    legacy_service_account_json = os.environ.get("GMAIL_SERVICE_ACCOUNT_JSON")
     test_json = os.environ.get("GMAIL_SERVICE_ACCOUNT_JSON_TEST")
     
     debug_info = {
         "environment_variables": {
             "GMAIL_TARGET_EMAIL": "✅ SET" if target_email else "❌ NOT SET",
-            "GMAIL_SERVICE_ACCOUNT_JSON": "✅ SET" if service_account_json else "❌ NOT SET",
-            "GMAIL_SERVICE_ACCOUNT_JSON_TEST": "✅ SET" if test_json else "❌ NOT SET",
-            "OPENAI_API_KEY": "✅ SET" if openai_key else "❌ NOT SET"
+            "OPENAI_API_KEY": "✅ SET" if openai_key else "❌ NOT SET",
+            # New individual variables approach
+            **{var_name: "✅ SET" if value else "❌ NOT SET" for var_name, value in google_vars.items()},
+            # Legacy variables (for comparison)
+            "GMAIL_SERVICE_ACCOUNT_JSON (legacy)": "✅ SET" if legacy_service_account_json else "❌ NOT SET",
+            "GMAIL_SERVICE_ACCOUNT_JSON_TEST (legacy)": "✅ SET" if test_json else "❌ NOT SET",
         },
         "service_status": {
             "gmail_service_available": GMAIL_AVAILABLE,
@@ -969,29 +982,51 @@ async def debug_environment():
         }
     }
     
-    # Additional Gmail JSON validation
-    if service_account_json:
+    # Additional Gmail credentials validation (new individual variables approach)
+    required_google_vars = ["GOOGLE_SERVICE_ACCOUNT_PROJECT_ID", "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY", 
+                           "GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL", "GOOGLE_SERVICE_ACCOUNT_CLIENT_ID"]
+    
+    all_google_vars_set = all(google_vars.get(var) for var in required_google_vars)
+    
+    if all_google_vars_set:
+        debug_info["gmail_credentials_validation"] = {
+            "approach": "individual_variables",
+            "valid_config": True,
+            "type": google_vars.get("GOOGLE_SERVICE_ACCOUNT_TYPE", "service_account"),
+            "project_id": google_vars.get("GOOGLE_SERVICE_ACCOUNT_PROJECT_ID"),
+            "client_email": google_vars.get("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL"),
+            "has_private_key": bool(google_vars.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY")),
+            "has_client_id": bool(google_vars.get("GOOGLE_SERVICE_ACCOUNT_CLIENT_ID")),
+            "message": "Using Google Cloud best practices with individual environment variables"
+        }
+    else:
+        missing_vars = [var for var in required_google_vars if not google_vars.get(var)]
+        debug_info["gmail_credentials_validation"] = {
+            "approach": "individual_variables",
+            "valid_config": False,
+            "missing_variables": missing_vars,
+            "message": "Missing required Google service account environment variables"
+        }
+    
+    # Legacy JSON validation (if present)
+    if legacy_service_account_json:
         try:
-            credentials_data = json.loads(service_account_json)
-            debug_info["gmail_json_validation"] = {
+            credentials_data = json.loads(legacy_service_account_json)
+            debug_info["legacy_gmail_json_validation"] = {
                 "valid_json": True,
                 "type": credentials_data.get("type"),
                 "project_id": credentials_data.get("project_id"),
                 "client_email": credentials_data.get("client_email"),
                 "has_private_key": bool(credentials_data.get("private_key")),
-                "has_client_id": bool(credentials_data.get("client_id"))
+                "has_client_id": bool(credentials_data.get("client_id")),
+                "note": "Legacy approach - consider migrating to individual variables"
             }
         except json.JSONDecodeError as e:
-            debug_info["gmail_json_validation"] = {
+            debug_info["legacy_gmail_json_validation"] = {
                 "valid_json": False,
                 "error": str(e),
                 "suggestion": "Check JSON formatting - should be single line with escaped quotes"
             }
-    else:
-        debug_info["gmail_json_validation"] = {
-            "valid_json": False,
-            "error": "GMAIL_SERVICE_ACCOUNT_JSON not set"
-        }
     
     # Additional target email validation
     if target_email:

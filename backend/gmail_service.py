@@ -27,21 +27,35 @@ class GmailService:
     def _initialize_service(self):
         """Initialize Gmail service with domain-wide delegation."""
         try:
-            # Get service account credentials from environment
-            service_account_info = os.environ.get("GMAIL_SERVICE_ACCOUNT_JSON")
-            if not service_account_info:
-                print("❌ GMAIL_SERVICE_ACCOUNT_JSON environment variable not set")
+            # Get service account credentials from individual environment variables
+            # This follows Google Cloud best practices instead of storing large JSON blobs
+            credentials_info = {
+                "type": os.environ.get("GOOGLE_SERVICE_ACCOUNT_TYPE", "service_account"),
+                "project_id": os.environ.get("GOOGLE_SERVICE_ACCOUNT_PROJECT_ID"),
+                "private_key_id": os.environ.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_ID"),
+                "private_key": os.environ.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"),
+                "client_email": os.environ.get("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL"),
+                "client_id": os.environ.get("GOOGLE_SERVICE_ACCOUNT_CLIENT_ID"),
+                "auth_uri": os.environ.get("GOOGLE_SERVICE_ACCOUNT_AUTH_URI", "https://accounts.google.com/o/oauth2/auth"),
+                "token_uri": os.environ.get("GOOGLE_SERVICE_ACCOUNT_TOKEN_URI", "https://oauth2.googleapis.com/token"),
+                "auth_provider_x509_cert_url": os.environ.get("GOOGLE_SERVICE_ACCOUNT_AUTH_PROVIDER_CERT_URL", "https://www.googleapis.com/oauth2/v1/certs"),
+                "client_x509_cert_url": os.environ.get("GOOGLE_SERVICE_ACCOUNT_CLIENT_CERT_URL"),
+                "universe_domain": os.environ.get("GOOGLE_SERVICE_ACCOUNT_UNIVERSE_DOMAIN", "googleapis.com")
+            }
+            
+            # Check if required fields are present
+            required_fields = ["project_id", "private_key", "client_email", "client_id"]
+            missing_fields = [field for field in required_fields if not credentials_info.get(field)]
+            
+            if missing_fields:
+                print(f"❌ Missing required Google service account environment variables:")
+                for field in missing_fields:
+                    var_name = f"GOOGLE_SERVICE_ACCOUNT_{field.upper().replace('_', '_')}"
+                    print(f"   - {var_name}")
                 return
             
             if not self.target_email:
                 print("❌ GMAIL_TARGET_EMAIL environment variable not set")
-                return
-            
-            # Parse the service account JSON
-            try:
-                credentials_info = json.loads(service_account_info)
-            except json.JSONDecodeError as e:
-                print(f"❌ Invalid JSON in GMAIL_SERVICE_ACCOUNT_JSON: {e}")
                 return
             
             # Define the scope for Gmail API
