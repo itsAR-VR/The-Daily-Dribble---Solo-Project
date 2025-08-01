@@ -26,6 +26,7 @@ class GmailService:
     
     def _initialize_service(self):
         """Initialize Gmail service with domain-wide delegation."""
+        print("🔄 Initializing Gmail service with individual environment variables...")
         try:
             # Get service account credentials from individual environment variables
             # This follows Google Cloud best practices instead of storing large JSON blobs
@@ -50,7 +51,7 @@ class GmailService:
             if missing_fields:
                 print(f"❌ Missing required Google service account environment variables:")
                 for field in missing_fields:
-                    var_name = f"GOOGLE_SERVICE_ACCOUNT_{field.upper().replace('_', '_')}"
+                    var_name = f"GOOGLE_SERVICE_ACCOUNT_{field.upper()}"
                     print(f"   - {var_name}")
                 return
             
@@ -58,23 +59,38 @@ class GmailService:
                 print("❌ GMAIL_TARGET_EMAIL environment variable not set")
                 return
             
+            print(f"✅ All required environment variables found")
+            print(f"📧 Target email: {self.target_email}")
+            print(f"🔑 Service account: {credentials_info.get('client_email')}")
+            print(f"📁 Project ID: {credentials_info.get('project_id')}")
+            
             # Define the scope for Gmail API
             scopes = ['https://www.googleapis.com/auth/gmail.readonly']
             
             # Create credentials with domain-wide delegation
+            print("🔐 Creating service account credentials...")
             credentials = service_account.Credentials.from_service_account_info(
                 credentials_info, scopes=scopes
             )
             
             # Delegate to the target email account
+            print(f"👤 Delegating to target email: {self.target_email}")
             delegated_credentials = credentials.with_subject(self.target_email)
             
             # Build the Gmail service
+            print("🚀 Building Gmail API service...")
             self.service = build('gmail', 'v1', credentials=delegated_credentials)
-            print(f"✅ Gmail service initialized for {self.target_email}")
+            print(f"✅ Gmail service initialized successfully for {self.target_email}")
+            print(f"🎯 Service account: {credentials_info.get('client_email')}")
+            print(f"📊 Project: {credentials_info.get('project_id')}")
             
         except Exception as e:
             print(f"❌ Failed to initialize Gmail service: {e}")
+            print(f"🔍 Error type: {type(e).__name__}")
+            if hasattr(e, 'status'):
+                print(f"📊 Status code: {e.status}")
+            if hasattr(e, 'details'):
+                print(f"📝 Details: {e.details}")
             self.service = None
     
     def search_verification_codes(self, platform: str, minutes_back: int = 10) -> List[Dict]:

@@ -920,8 +920,45 @@ async def reinitialize_gmail_service():
     return {
         "success": success,
         "message": "Gmail service reinitialized successfully" if success else "Gmail service reinitialization failed",
-        "using_individual_vars": True
+        "using_individual_vars": True,
+        "target_email": gmail_service.target_email,
+        "service_available": gmail_service.service is not None
     }
+
+
+@app.get("/gmail/diagnostics")
+async def gmail_diagnostics():
+    """Comprehensive Gmail service diagnostics."""
+    diagnostics = {
+        "gmail_service_module": gmail_service is not None,
+        "service_status": {
+            "initialized": gmail_service.service is not None if gmail_service else False,
+            "target_email": gmail_service.target_email if gmail_service else None,
+        },
+        "environment_check": {}
+    }
+    
+    # Check individual environment variables
+    required_vars = [
+        "GOOGLE_SERVICE_ACCOUNT_PROJECT_ID",
+        "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY", 
+        "GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL",
+        "GOOGLE_SERVICE_ACCOUNT_CLIENT_ID"
+    ]
+    
+    for var in required_vars:
+        value = os.environ.get(var)
+        diagnostics["environment_check"][var] = {
+            "set": bool(value),
+            "length": len(value) if value else 0
+        }
+    
+    diagnostics["environment_check"]["GMAIL_TARGET_EMAIL"] = {
+        "set": bool(os.environ.get("GMAIL_TARGET_EMAIL")),
+        "value": os.environ.get("GMAIL_TARGET_EMAIL")
+    }
+    
+    return diagnostics
 
 
 @app.post("/gmail/test-search")
