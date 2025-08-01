@@ -73,7 +73,7 @@ except Exception as e:
 app = FastAPI(
     title="Multi-Platform Listing Bot API",
     description="API for automating product listings across multiple wholesale marketplaces",
-    version="1.0.0"
+    version="1.1.0-individual-env-vars"
 )
 
 # Enable CORS for frontend integration
