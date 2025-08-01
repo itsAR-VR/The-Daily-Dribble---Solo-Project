@@ -33,14 +33,29 @@ except ImportError:
     def run_from_spreadsheet(input_path: str, output_path: str) -> None:
         raise RuntimeError("Chrome/Selenium not available. Please check deployment configuration.")
 
-# Import Gmail service
+# Import Gmail service with detailed error handling
+GMAIL_AVAILABLE = False
+gmail_service = None
+gmail_import_error = None
+
 try:
+    print("📦 Attempting to import Gmail service...")
     from .gmail_service import gmail_service
+    print("✅ Gmail service module imported successfully")
     GMAIL_AVAILABLE = gmail_service.is_available()
-except ImportError:
+    print(f"📊 Gmail service available: {GMAIL_AVAILABLE}")
+except ImportError as e:
+    gmail_import_error = str(e)
+    print(f"❌ Gmail service import failed: {e}")
+    print("🔍 This is usually due to missing Google API dependencies")
     GMAIL_AVAILABLE = False
     gmail_service = None
-    print("Gmail service not available. 2FA code retrieval will be disabled.")
+except Exception as e:
+    gmail_import_error = str(e)
+    print(f"❌ Gmail service initialization failed: {e}")
+    print(f"🔍 Error type: {type(e).__name__}")
+    GMAIL_AVAILABLE = False
+    gmail_service = None
 
 # Test Chrome availability on startup
 CHROME_AVAILABLE = True
@@ -931,6 +946,8 @@ async def gmail_diagnostics():
     """Comprehensive Gmail service diagnostics."""
     diagnostics = {
         "gmail_service_module": gmail_service is not None,
+        "gmail_available_flag": GMAIL_AVAILABLE,
+        "import_error": gmail_import_error,
         "service_status": {
             "initialized": gmail_service.service is not None if gmail_service else False,
             "target_email": gmail_service.target_email if gmail_service else None,
