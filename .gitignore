@@ -128,4 +128,8 @@ backend/PRODUCTION_NOTES.md
 backend/.env.example
 
 # Env files
-backend/.env 
+backend/.env
+
+# OAuth tokens and credentials (security)
+backend/gmail_token.pickle
+backend/google_oauth_credentials.json 
