@@ -27,7 +27,7 @@ except ImportError:
 
 # Import the main script
 try:
-    from .multi_platform_listing_bot import run_from_spreadsheet
+    from multi_platform_listing_bot import run_from_spreadsheet
 except ImportError:
     # Create a dummy function if import fails
     def run_from_spreadsheet(input_path: str, output_path: str) -> None:
@@ -40,10 +40,13 @@ gmail_import_error = None
 
 try:
     print("📦 Attempting to import Gmail service...")
-    from .gmail_service import gmail_service
+    from gmail_service import gmail_service
     print("✅ Gmail service module imported successfully")
-    GMAIL_AVAILABLE = gmail_service.is_available()
+    # Gmail service is available if imported successfully, regardless of auth status
+    GMAIL_AVAILABLE = True
+    auth_status = gmail_service.is_available()
     print(f"📊 Gmail service available: {GMAIL_AVAILABLE}")
+    print(f"🔐 Gmail authentication status: {auth_status}")
 except ImportError as e:
     gmail_import_error = str(e)
     print(f"❌ Gmail service import failed: {e}")
@@ -60,7 +63,7 @@ except Exception as e:
 # Test Chrome availability on startup
 CHROME_AVAILABLE = True
 try:
-    from .multi_platform_listing_bot import create_driver
+    from multi_platform_listing_bot import create_driver
     test_driver = create_driver()
     test_driver.quit()
     print("✅ Chrome driver test successful")
@@ -383,20 +386,37 @@ Return as comma-separated list only:
 async def read_root():
     chrome_status = "available" if CHROME_AVAILABLE else "not available"
     openai_status = "available" if OPENAI_AVAILABLE and os.environ.get("OPENAI_API_KEY") else "not available"
-    gmail_status = "available" if GMAIL_AVAILABLE else "not available"
+    
+    # Check OAuth authentication status
+    gmail_authenticated = False
+    gmail_status = "not available"
+    if GMAIL_AVAILABLE and gmail_service:
+        if gmail_service.credentials and gmail_service.credentials.valid:
+            gmail_status = "authenticated"
+            gmail_authenticated = True
+        else:
+            gmail_status = "requires authentication"
+    
     return {
         "message": "Multi-Platform Listing Bot API",
+        "version": "2.0.0-oauth",
         "chrome_status": chrome_status,
         "openai_status": openai_status,
         "gmail_status": gmail_status,
+        "gmail_authenticated": gmail_authenticated,
+        "authentication_method": "oauth",
         "ai_features": "enabled" if openai_status == "available" else "fallback mode",
-        "2fa_automation": "enabled" if gmail_status == "available" else "manual intervention required",
+        "2fa_automation": "enabled" if gmail_authenticated else "authentication required",
         "endpoints": {
             "POST /listings": "Upload Excel file for batch processing",
             "GET /listings/{job_id}": "Get job status and results",
             "POST /listings/single": "Post a single listing",
             "POST /listings/enhanced": "Post with comprehensive data and AI enrichment",
-            "POST /listings/enhanced-visual": "Post with visual browser automation feedback"
+            "POST /listings/enhanced-visual": "Post with visual browser automation feedback",
+            "GET /gmail/auth": "Start Gmail OAuth authentication",
+            "GET /gmail/callback": "OAuth callback handler",
+            "GET /gmail/status": "Check Gmail authentication status",
+            "POST /gmail/revoke": "Revoke Gmail authentication"
         }
     }
 
@@ -902,29 +922,37 @@ async def get_gmail_status():
         return {
             "available": False,
             "status": "not_configured",
-            "message": "Gmail service not available. Check environment variables.",
-            "required_env_vars": [
-                "GMAIL_TARGET_EMAIL",
-                "GMAIL_SERVICE_ACCOUNT_JSON"
-            ]
+            "message": "Gmail service not available. Check OAuth configuration.",
+            "oauth_flow": {
+                "auth_url": "/gmail/auth",
+                "callback_url": "/gmail/callback",
+                "revoke_url": "/gmail/revoke"
+            }
         }
+    
+    has_credentials = gmail_service.credentials is not None and gmail_service.credentials.valid
     
     return {
         "available": True,
-        "status": "configured",
-        "target_email": gmail_service.target_email,
-        "message": "Gmail service is properly configured",
+        "status": "authenticated" if has_credentials else "requires_auth",
+        "message": "Gmail service is properly configured with OAuth" if has_credentials else "OAuth authentication required",
+        "authenticated": has_credentials,
         "features": [
             "2FA code retrieval",
-            "Verification code extraction",
+            "Verification code extraction", 
             "Platform-specific email monitoring"
-        ]
+        ],
+        "oauth_flow": {
+            "auth_url": "/gmail/auth",
+            "callback_url": "/gmail/callback",
+            "revoke_url": "/gmail/revoke"
+        }
     }
 
 
 @app.post("/gmail/reinitialize")
 async def reinitialize_gmail_service():
-    """Force reinitialize Gmail service with current environment variables."""
+    """Force reinitialize Gmail service with current OAuth credentials."""
     if not gmail_service:
         return {
             "success": False,
@@ -935,45 +963,118 @@ async def reinitialize_gmail_service():
     return {
         "success": success,
         "message": "Gmail service reinitialized successfully" if success else "Gmail service reinitialization failed",
-        "using_individual_vars": True,
-        "target_email": gmail_service.target_email,
-        "service_available": gmail_service.service is not None
+        "authentication_method": "oauth",
+        "service_available": gmail_service.service is not None,
+        "credentials_valid": gmail_service.credentials is not None and gmail_service.credentials.valid if gmail_service.credentials else False
     }
+
+
+@app.get("/gmail/auth")
+async def start_gmail_oauth():
+    """Start Gmail OAuth authentication flow."""
+    if not GMAIL_AVAILABLE or not gmail_service:
+        raise HTTPException(status_code=500, detail="Gmail service not available")
+    
+    try:
+        authorization_url, state = gmail_service.get_authorization_url()
+        return {
+            "authorization_url": authorization_url,
+            "state": state,
+            "message": "Visit the authorization URL to authenticate with Gmail",
+            "instructions": [
+                "1. Visit the authorization URL",
+                "2. Sign in with your Google account",
+                "3. Grant access to Gmail",
+                "4. You'll be redirected to the callback URL with an authorization code"
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start OAuth flow: {str(e)}")
+
+
+@app.get("/gmail/callback")
+async def gmail_oauth_callback(code: str = None, error: str = None):
+    """Handle Gmail OAuth callback."""
+    if error:
+        raise HTTPException(status_code=400, detail=f"OAuth error: {error}")
+    
+    if not code:
+        raise HTTPException(status_code=400, detail="No authorization code provided")
+    
+    if not GMAIL_AVAILABLE or not gmail_service:
+        raise HTTPException(status_code=500, detail="Gmail service not available")
+    
+    try:
+        success = gmail_service.exchange_code_for_credentials(code)
+        if success:
+            return {
+                "success": True,
+                "message": "Gmail OAuth authentication successful!",
+                "status": "authenticated",
+                "service_available": gmail_service.service is not None
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to exchange code for credentials")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OAuth callback failed: {str(e)}")
+
+
+@app.post("/gmail/revoke")
+async def revoke_gmail_oauth():
+    """Revoke Gmail OAuth credentials."""
+    if not GMAIL_AVAILABLE or not gmail_service:
+        raise HTTPException(status_code=500, detail="Gmail service not available")
+    
+    try:
+        success = gmail_service.revoke_credentials()
+        return {
+            "success": success,
+            "message": "Gmail OAuth credentials revoked successfully",
+            "status": "unauthenticated"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to revoke credentials: {str(e)}")
 
 
 @app.get("/gmail/diagnostics")
 async def gmail_diagnostics():
-    """Comprehensive Gmail service diagnostics."""
+    """Comprehensive Gmail service diagnostics for OAuth."""
     diagnostics = {
         "gmail_service_module": gmail_service is not None,
         "gmail_available_flag": GMAIL_AVAILABLE,
         "import_error": gmail_import_error,
+        "authentication_method": "oauth",
         "service_status": {
             "initialized": gmail_service.service is not None if gmail_service else False,
-            "target_email": gmail_service.target_email if gmail_service else None,
+            "has_credentials": gmail_service.credentials is not None if gmail_service else False,
+            "credentials_valid": gmail_service.credentials.valid if gmail_service and gmail_service.credentials else False,
         },
-        "environment_check": {}
+        "oauth_files": {}
     }
     
-    # Check individual environment variables
-    required_vars = [
-        "GOOGLE_SERVICE_ACCOUNT_PROJECT_ID",
-        "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY", 
-        "GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL",
-        "GOOGLE_SERVICE_ACCOUNT_CLIENT_ID"
-    ]
-    
-    for var in required_vars:
-        value = os.environ.get(var)
-        diagnostics["environment_check"][var] = {
-            "set": bool(value),
-            "length": len(value) if value else 0
+    # Check OAuth files
+    if gmail_service:
+        diagnostics["oauth_files"]["credentials_file"] = {
+            "path": gmail_service.credentials_file,
+            "exists": os.path.exists(gmail_service.credentials_file)
         }
-    
-    diagnostics["environment_check"]["GMAIL_TARGET_EMAIL"] = {
-        "set": bool(os.environ.get("GMAIL_TARGET_EMAIL")),
-        "value": os.environ.get("GMAIL_TARGET_EMAIL")
-    }
+        diagnostics["oauth_files"]["token_file"] = {
+            "path": gmail_service.token_file,
+            "exists": os.path.exists(gmail_service.token_file)
+        }
+        
+        # Check credentials file content
+        if os.path.exists(gmail_service.credentials_file):
+            try:
+                with open(gmail_service.credentials_file, 'r') as f:
+                    creds_data = json.load(f)
+                    diagnostics["oauth_files"]["credentials_valid"] = {
+                        "has_client_id": bool(creds_data.get("installed", {}).get("client_id")),
+                        "has_client_secret": bool(creds_data.get("installed", {}).get("client_secret")),
+                        "project_id": creds_data.get("installed", {}).get("project_id")
+                    }
+            except Exception as e:
+                diagnostics["oauth_files"]["credentials_error"] = str(e)
     
     return diagnostics
 
@@ -1015,96 +1116,64 @@ async def test_gmail_search(platform: str = "gsmexchange"):
 
 @app.get("/debug/environment")
 async def debug_environment():
-    """Debug endpoint to check environment variable configuration."""
+    """Debug endpoint to check OAuth configuration."""
     import json
     
     # Check environment variables
-    target_email = os.environ.get("GMAIL_TARGET_EMAIL")
     openai_key = os.environ.get("OPENAI_API_KEY")
-    
-    # Check individual Google service account variables (new approach)
-    google_vars = {
-        "GOOGLE_SERVICE_ACCOUNT_TYPE": os.environ.get("GOOGLE_SERVICE_ACCOUNT_TYPE"),
-        "GOOGLE_SERVICE_ACCOUNT_PROJECT_ID": os.environ.get("GOOGLE_SERVICE_ACCOUNT_PROJECT_ID"),
-        "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_ID": os.environ.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_ID"),
-        "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY": os.environ.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"),
-        "GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL": os.environ.get("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL"),
-        "GOOGLE_SERVICE_ACCOUNT_CLIENT_ID": os.environ.get("GOOGLE_SERVICE_ACCOUNT_CLIENT_ID"),
-    }
-    
-    # Legacy variables for comparison
-    legacy_service_account_json = os.environ.get("GMAIL_SERVICE_ACCOUNT_JSON")
-    test_json = os.environ.get("GMAIL_SERVICE_ACCOUNT_JSON_TEST")
     
     debug_info = {
         "environment_variables": {
-            "GMAIL_TARGET_EMAIL": "✅ SET" if target_email else "❌ NOT SET",
-            "OPENAI_API_KEY": "✅ SET" if openai_key else "❌ NOT SET",
-            # New individual variables approach
-            **{var_name: "✅ SET" if value else "❌ NOT SET" for var_name, value in google_vars.items()},
-            # Legacy variables (for comparison)
-            "GMAIL_SERVICE_ACCOUNT_JSON (legacy)": "✅ SET" if legacy_service_account_json else "❌ NOT SET",
-            "GMAIL_SERVICE_ACCOUNT_JSON_TEST (legacy)": "✅ SET" if test_json else "❌ NOT SET",
+            "OPENAI_API_KEY": "✅ SET" if openai_key else "❌ NOT SET"
         },
         "service_status": {
             "gmail_service_available": GMAIL_AVAILABLE,
             "chrome_available": CHROME_AVAILABLE,
             "openai_available": OPENAI_AVAILABLE
+        },
+        "authentication_method": "oauth",
+        "runtime_check": {
+            "gmail_service_object": gmail_service is not None,
+            "gmail_service_type": str(type(gmail_service)) if gmail_service else "None",
+            "gmail_available_flag": GMAIL_AVAILABLE,
+            "can_call_methods": hasattr(gmail_service, 'get_authorization_url') if gmail_service else False
         }
     }
     
-    # Additional Gmail credentials validation (new individual variables approach)
-    required_google_vars = ["GOOGLE_SERVICE_ACCOUNT_PROJECT_ID", "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY", 
-                           "GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL", "GOOGLE_SERVICE_ACCOUNT_CLIENT_ID"]
-    
-    all_google_vars_set = all(google_vars.get(var) for var in required_google_vars)
-    
-    if all_google_vars_set:
-        debug_info["gmail_credentials_validation"] = {
-            "approach": "individual_variables",
-            "valid_config": True,
-            "type": google_vars.get("GOOGLE_SERVICE_ACCOUNT_TYPE", "service_account"),
-            "project_id": google_vars.get("GOOGLE_SERVICE_ACCOUNT_PROJECT_ID"),
-            "client_email": google_vars.get("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL"),
-            "has_private_key": bool(google_vars.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY")),
-            "has_client_id": bool(google_vars.get("GOOGLE_SERVICE_ACCOUNT_CLIENT_ID")),
-            "message": "Using Google Cloud best practices with individual environment variables"
+    # Check OAuth files and status
+    if gmail_service:
+        debug_info["oauth_status"] = {
+            "credentials_file_exists": os.path.exists(gmail_service.credentials_file),
+            "token_file_exists": os.path.exists(gmail_service.token_file),
+            "has_credentials": gmail_service.credentials is not None,
+            "credentials_valid": gmail_service.credentials.valid if gmail_service.credentials else False,
+            "service_initialized": gmail_service.service is not None
         }
-    else:
-        missing_vars = [var for var in required_google_vars if not google_vars.get(var)]
-        debug_info["gmail_credentials_validation"] = {
-            "approach": "individual_variables",
-            "valid_config": False,
-            "missing_variables": missing_vars,
-            "message": "Missing required Google service account environment variables"
-        }
-    
-    # Legacy JSON validation (if present)
-    if legacy_service_account_json:
-        try:
-            credentials_data = json.loads(legacy_service_account_json)
-            debug_info["legacy_gmail_json_validation"] = {
-                "valid_json": True,
-                "type": credentials_data.get("type"),
-                "project_id": credentials_data.get("project_id"),
-                "client_email": credentials_data.get("client_email"),
-                "has_private_key": bool(credentials_data.get("private_key")),
-                "has_client_id": bool(credentials_data.get("client_id")),
-                "note": "Legacy approach - consider migrating to individual variables"
+        
+        # Check credentials file content
+        if os.path.exists(gmail_service.credentials_file):
+            try:
+                with open(gmail_service.credentials_file, 'r') as f:
+                    creds_data = json.load(f)
+                    installed = creds_data.get("installed", {})
+                    debug_info["oauth_credentials_validation"] = {
+                        "valid_json": True,
+                        "project_id": installed.get("project_id"),
+                        "has_client_id": bool(installed.get("client_id")),
+                        "has_client_secret": bool(installed.get("client_secret")),
+                        "redirect_uris": installed.get("redirect_uris", [])
+                    }
+            except json.JSONDecodeError as e:
+                debug_info["oauth_credentials_validation"] = {
+                    "valid_json": False,
+                    "error": str(e),
+                    "suggestion": "Check OAuth credentials JSON formatting"
+                }
+        else:
+            debug_info["oauth_credentials_validation"] = {
+                "file_missing": True,
+                "suggestion": "OAuth credentials file not found. Please ensure google_oauth_credentials.json exists."
             }
-        except json.JSONDecodeError as e:
-            debug_info["legacy_gmail_json_validation"] = {
-                "valid_json": False,
-                "error": str(e),
-                "suggestion": "Check JSON formatting - should be single line with escaped quotes"
-            }
-    
-    # Additional target email validation
-    if target_email:
-        debug_info["target_email_details"] = {
-            "email": target_email,
-            "valid_format": "@" in target_email and "." in target_email
-        }
     
     return debug_info
 

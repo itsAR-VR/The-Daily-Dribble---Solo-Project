@@ -1,17 +1,18 @@
 """
 Gmail API service for retrieving 2FA verification codes.
-Uses service account with domain-wide delegation.
+Uses OAuth authentication flow.
 """
 
 import os
 import json
 import re
 import base64
+import pickle
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict
+from google.auth.transport.requests import Request
 from google.auth.exceptions import RefreshError
-from google.auth import default
-from google.oauth2 import service_account
+from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -21,68 +22,42 @@ class GmailService:
     
     def __init__(self):
         self.service = None
-        self.target_email = os.environ.get("GMAIL_TARGET_EMAIL")  # The email account to impersonate
+        self.credentials = None
+        self.credentials_file = os.path.join(os.path.dirname(__file__), 'google_oauth_credentials.json')
+        self.token_file = os.path.join(os.path.dirname(__file__), 'gmail_token.pickle')
+        self.scopes = ['https://www.googleapis.com/auth/gmail.readonly']
         self._initialize_service()
     
     def _initialize_service(self):
-        """Initialize Gmail service with domain-wide delegation."""
-        print("🔄 Initializing Gmail service with individual environment variables...")
+        """Initialize Gmail service with OAuth authentication."""
+        print("🔄 Initializing Gmail service with OAuth...")
         try:
-            # Get service account credentials from individual environment variables
-            # This follows Google Cloud best practices instead of storing large JSON blobs
-            credentials_info = {
-                "type": os.environ.get("GOOGLE_SERVICE_ACCOUNT_TYPE", "service_account"),
-                "project_id": os.environ.get("GOOGLE_SERVICE_ACCOUNT_PROJECT_ID"),
-                "private_key_id": os.environ.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_ID"),
-                "private_key": os.environ.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"),
-                "client_email": os.environ.get("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL"),
-                "client_id": os.environ.get("GOOGLE_SERVICE_ACCOUNT_CLIENT_ID"),
-                "auth_uri": os.environ.get("GOOGLE_SERVICE_ACCOUNT_AUTH_URI", "https://accounts.google.com/o/oauth2/auth"),
-                "token_uri": os.environ.get("GOOGLE_SERVICE_ACCOUNT_TOKEN_URI", "https://oauth2.googleapis.com/token"),
-                "auth_provider_x509_cert_url": os.environ.get("GOOGLE_SERVICE_ACCOUNT_AUTH_PROVIDER_CERT_URL", "https://www.googleapis.com/oauth2/v1/certs"),
-                "client_x509_cert_url": os.environ.get("GOOGLE_SERVICE_ACCOUNT_CLIENT_CERT_URL"),
-                "universe_domain": os.environ.get("GOOGLE_SERVICE_ACCOUNT_UNIVERSE_DOMAIN", "googleapis.com")
-            }
+            # Check if we have existing credentials
+            if os.path.exists(self.token_file):
+                print("📁 Loading existing OAuth token...")
+                with open(self.token_file, 'rb') as token:
+                    self.credentials = pickle.load(token)
             
-            # Check if required fields are present
-            required_fields = ["project_id", "private_key", "client_email", "client_id"]
-            missing_fields = [field for field in required_fields if not credentials_info.get(field)]
+            # If there are no (valid) credentials available, let the user log in.
+            if not self.credentials or not self.credentials.valid:
+                if self.credentials and self.credentials.expired and self.credentials.refresh_token:
+                    print("🔄 Refreshing expired OAuth token...")
+                    self.credentials.refresh(Request())
+                else:
+                    print("❌ No valid OAuth credentials found. User needs to authenticate.")
+                    print("🔗 Please use the /gmail/auth endpoint to start OAuth flow")
+                    return
+                
+                # Save the credentials for the next run
+                with open(self.token_file, 'wb') as token:
+                    pickle.dump(self.credentials, token)
             
-            if missing_fields:
-                print(f"❌ Missing required Google service account environment variables:")
-                for field in missing_fields:
-                    var_name = f"GOOGLE_SERVICE_ACCOUNT_{field.upper()}"
-                    print(f"   - {var_name}")
-                return
-            
-            if not self.target_email:
-                print("❌ GMAIL_TARGET_EMAIL environment variable not set")
-                return
-            
-            print(f"✅ All required environment variables found")
-            print(f"📧 Target email: {self.target_email}")
-            print(f"🔑 Service account: {credentials_info.get('client_email')}")
-            print(f"📁 Project ID: {credentials_info.get('project_id')}")
-            
-            # Define the scope for Gmail API
-            scopes = ['https://www.googleapis.com/auth/gmail.readonly']
-            
-            # Create credentials with domain-wide delegation
-            print("🔐 Creating service account credentials...")
-            credentials = service_account.Credentials.from_service_account_info(
-                credentials_info, scopes=scopes
-            )
-            
-            # Delegate to the target email account
-            print(f"👤 Delegating to target email: {self.target_email}")
-            delegated_credentials = credentials.with_subject(self.target_email)
+            print("✅ OAuth credentials loaded successfully")
             
             # Build the Gmail service
             print("🚀 Building Gmail API service...")
-            self.service = build('gmail', 'v1', credentials=delegated_credentials)
-            print(f"✅ Gmail service initialized successfully for {self.target_email}")
-            print(f"🎯 Service account: {credentials_info.get('client_email')}")
-            print(f"📊 Project: {credentials_info.get('project_id')}")
+            self.service = build('gmail', 'v1', credentials=self.credentials)
+            print("✅ Gmail service initialized successfully with OAuth")
             
         except Exception as e:
             print(f"❌ Failed to initialize Gmail service: {e}")
@@ -273,11 +248,63 @@ class GmailService:
         return self.service is not None
     
     def force_reinitialize(self) -> bool:
-        """Force reinitialize the Gmail service with current environment variables."""
+        """Force reinitialize the Gmail service with current OAuth credentials."""
         print("🔄 Force reinitializing Gmail service...")
         self.service = None
+        self.credentials = None
         self._initialize_service()
         return self.service is not None
+    
+    def get_oauth_flow(self, redirect_uri: str = "http://localhost:8000/gmail/callback"):
+        """Create and return OAuth flow for authentication."""
+        if not os.path.exists(self.credentials_file):
+            raise FileNotFoundError(f"OAuth credentials file not found: {self.credentials_file}")
+        
+        flow = Flow.from_client_secrets_file(
+            self.credentials_file, 
+            scopes=self.scopes,
+            redirect_uri=redirect_uri
+        )
+        return flow
+    
+    def get_authorization_url(self, redirect_uri: str = "http://localhost:8000/gmail/callback"):
+        """Get the authorization URL for OAuth flow."""
+        flow = self.get_oauth_flow(redirect_uri)
+        authorization_url, state = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true'
+        )
+        return authorization_url, state
+    
+    def exchange_code_for_credentials(self, authorization_code: str, redirect_uri: str = "http://localhost:8000/gmail/callback"):
+        """Exchange authorization code for credentials."""
+        flow = self.get_oauth_flow(redirect_uri)
+        flow.fetch_token(code=authorization_code)
+        
+        # Save credentials
+        self.credentials = flow.credentials
+        with open(self.token_file, 'wb') as token:
+            pickle.dump(self.credentials, token)
+        
+        # Initialize service with new credentials
+        self.service = build('gmail', 'v1', credentials=self.credentials)
+        return True
+    
+    def revoke_credentials(self):
+        """Revoke OAuth credentials and delete token file."""
+        if self.credentials and hasattr(self.credentials, 'token'):
+            try:
+                self.credentials.revoke(Request())
+            except Exception as e:
+                print(f"Warning: Failed to revoke credentials: {e}")
+        
+        # Delete token file
+        if os.path.exists(self.token_file):
+            os.remove(self.token_file)
+        
+        self.credentials = None
+        self.service = None
+        return True
 
 
 # Global Gmail service instance
