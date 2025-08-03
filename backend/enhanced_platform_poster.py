@@ -4,6 +4,8 @@ Enhanced platform poster with Gmail 2FA integration
 """
 
 import time
+import os
+from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -26,7 +28,16 @@ class Enhanced2FAMarketplacePoster:
         self.username, self.password = self._load_credentials()
         self.gmail_service = gmail_service if GMAIL_AVAILABLE else None
         self.max_2fa_attempts = 3
-        self.2fa_wait_time = 30  # seconds to wait for 2FA code
+        self.tfa_wait_time = 30  # seconds to wait for 2FA code
+    
+    def _load_credentials(self) -> tuple[str, str]:
+        """Load platform credentials from environment variables"""
+        load_dotenv()
+        user = os.getenv(f"{self.PLATFORM.upper()}_USERNAME")
+        pwd = os.getenv(f"{self.PLATFORM.upper()}_PASSWORD")
+        if not user or not pwd:
+            raise RuntimeError(f"Missing credentials for {self.PLATFORM}")
+        return user, pwd
     
     def login_with_2fa(self) -> bool:
         """Enhanced login with 2FA support"""
