@@ -108,7 +108,7 @@ class Enhanced2FAMarketplacePoster:
         return any(indicator in page_text for indicator in indicators)
     
     def _handle_2fa(self) -> bool:
-        """Handle 2FA authentication"""
+        """Enhanced 2FA authentication with email monitoring and LLM extraction"""
         if not self.gmail_service:
             print("❌ Gmail service not available for 2FA")
             return False
@@ -116,55 +116,235 @@ class Enhanced2FAMarketplacePoster:
         driver = self.driver
         wait = WebDriverWait(driver, 10)
         
+        print(f"📧 Waiting for 2FA email from {self.PLATFORM}...")
+        print("⏳ Allowing time for email delivery (60 seconds)...")
+        time.sleep(60)  # Wait for email to arrive
+        
         for attempt in range(self.max_2fa_attempts):
-            print(f"🔍 Attempt {attempt + 1}/{self.max_2fa_attempts} - Checking Gmail for 2FA code...")
+            print(f"🔍 Attempt {attempt + 1}/{self.max_2fa_attempts} - Searching for 2FA email...")
             
-            # Wait a bit for email to arrive
-            if attempt > 0:
-                time.sleep(5)
-            
-            # Get verification code from Gmail
-            code = self.gmail_service.get_latest_verification_code(self.PLATFORM.lower())
+            # Search for recent emails containing platform name
+            code = self._extract_2fa_code_from_email()
             
             if code:
                 print(f"✅ Found 2FA code: {code}")
                 
-                # Find 2FA input field
-                try:
-                    code_field = wait.until(EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, 
-                         "input[name='code'], input[name='otp'], input[name='token'], "
-                         "input[placeholder*='code'], input[placeholder*='verification']")
-                    ))
-                    code_field.clear()
-                    code_field.send_keys(code)
-                    
-                    # Submit code
-                    try:
-                        submit = driver.find_element(
-                            By.CSS_SELECTOR, 
-                            "button[type='submit'], input[type='submit'], button:contains('Verify'), button:contains('Submit')"
-                        )
-                        submit.click()
-                    except:
-                        # Some sites submit on enter
-                        code_field.send_keys("\n")
-                    
+                # Find 2FA input field and enter code
+                if self._enter_2fa_code(code, wait):
                     # Check if login successful
                     time.sleep(3)
                     if self._check_login_success():
                         print(f"✅ 2FA successful for {self.PLATFORM}")
                         return True
                     else:
-                        print(f"⚠️  2FA code might be incorrect or expired")
-                        
-                except Exception as e:
-                    print(f"❌ Error entering 2FA code: {e}")
+                        print(f"⚠️  2FA code might be incorrect or expired, retrying...")
+                else:
+                    print(f"❌ Failed to enter 2FA code")
             else:
-                print(f"⚠️  No 2FA code found in Gmail")
+                print(f"⚠️  No 2FA code found in recent emails")
+                
+            # Wait before retry
+            if attempt < self.max_2fa_attempts - 1:
+                print("⏳ Waiting 15 seconds before retry...")
+                time.sleep(15)
                 
         print(f"❌ Failed to complete 2FA for {self.PLATFORM}")
         return False
+    
+    def _extract_2fa_code_from_email(self) -> str:
+        """Extract 2FA code from recent emails using LLM"""
+        try:
+            # Search for emails containing the platform name in the last 10 minutes
+            platform_name = self.PLATFORM.lower()
+            recent_emails = self._search_recent_emails(platform_name, minutes_back=10)
+            
+            if not recent_emails:
+                print(f"📧 No recent emails found containing '{platform_name}'")
+                return None
+                
+            # Get the most recent email
+            latest_email = recent_emails[0]
+            email_content = latest_email.get('content', '')
+            email_subject = latest_email.get('subject', '')
+            
+            print(f"📨 Found recent email: '{email_subject[:50]}...'")
+            
+            # Use LLM to extract authentication code
+            code = self._llm_extract_auth_code(email_content, email_subject)
+            return code
+            
+        except Exception as e:
+            print(f"❌ Error extracting 2FA code from email: {e}")
+            return None
+    
+    def _search_recent_emails(self, platform_name: str, minutes_back: int = 10) -> list:
+        """Search for recent emails containing platform name"""
+        try:
+            from datetime import datetime, timedelta
+            
+            # Calculate time threshold
+            time_threshold = datetime.now() - timedelta(minutes=minutes_back)
+            time_str = time_threshold.strftime('%Y/%m/%d')
+            
+            # Simple search query - just look for the platform name
+            query = f"subject:{platform_name} OR from:{platform_name} OR {platform_name} after:{time_str}"
+            
+            print(f"🔍 Searching Gmail with query: {query}")
+            
+            # Use gmail service to search
+            results = self.gmail_service.search_verification_codes(platform_name, minutes_back)
+            return results
+            
+        except Exception as e:
+            print(f"❌ Error searching recent emails: {e}")
+            return []
+    
+    def _llm_extract_auth_code(self, email_content: str, email_subject: str) -> str:
+        """Use OpenAI LLM to extract authentication code from email"""
+        try:
+            # Import OpenAI (check if available)
+            try:
+                from openai import OpenAI
+                import os
+                
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    print("⚠️  OpenAI API key not available, falling back to regex")
+                    return self._regex_extract_auth_code(email_content)
+                    
+                client = OpenAI(api_key=api_key)
+                
+            except ImportError:
+                print("⚠️  OpenAI not available, falling back to regex")
+                return self._regex_extract_auth_code(email_content)
+            
+            # Prepare prompt for LLM
+            prompt = f"""
+            Extract the authentication/verification code from this email.
+            
+            Subject: {email_subject}
+            Content: {email_content[:1000]}  # Limit content to avoid token limits
+            
+            Instructions:
+            1. Look for numeric codes (usually 4-8 digits)
+            2. Common patterns: "Your code is 123456", "Verification code: 123456", "123456 is your code"
+            3. Return ONLY the numeric code, nothing else
+            4. If no code found, return "NO_CODE_FOUND"
+            
+            Code:"""
+            
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a precise code extractor. Return only the authentication code or 'NO_CODE_FOUND'."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=50,
+                temperature=0
+            )
+            
+            extracted_code = response.choices[0].message.content.strip()
+            
+            if extracted_code == "NO_CODE_FOUND" or not extracted_code.isdigit():
+                print("🤖 LLM couldn't find code, trying regex fallback...")
+                return self._regex_extract_auth_code(email_content)
+            
+            print(f"🤖 LLM extracted code: {extracted_code}")
+            return extracted_code
+            
+        except Exception as e:
+            print(f"❌ Error with LLM extraction: {e}, falling back to regex")
+            return self._regex_extract_auth_code(email_content)
+    
+    def _regex_extract_auth_code(self, email_content: str) -> str:
+        """Fallback regex-based code extraction"""
+        import re
+        
+        # Common patterns for authentication codes
+        patterns = [
+            r'(?:code|verification|authentication)[\s:]*(\d{4,8})',
+            r'(\d{4,8})[\s]*is your.*(?:code|verification)',
+            r'Your.*(?:code|verification)[\s:]*(\d{4,8})',
+            r'\b(\d{6})\b',  # 6-digit codes are common
+            r'\b(\d{4})\b',  # 4-digit codes
+            r'\b(\d{8})\b'   # 8-digit codes
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, email_content, re.IGNORECASE)
+            if matches:
+                code = matches[0]
+                print(f"🔍 Regex extracted code: {code}")
+                return code
+        
+        print("❌ No authentication code found with regex")
+        return None
+    
+    def _enter_2fa_code(self, code: str, wait: WebDriverWait) -> bool:
+        """Enter 2FA code into the form"""
+        try:
+            # Find 2FA input field with multiple selectors
+            selectors = [
+                "input[name='code']",
+                "input[name='otp']", 
+                "input[name='token']",
+                "input[name='verification']",
+                "input[placeholder*='code']",
+                "input[placeholder*='verification']",
+                "input[placeholder*='authentication']",
+                "input[type='text'][maxlength='6']",  # Common for 6-digit codes
+                "input[type='text'][maxlength='4']",  # Common for 4-digit codes
+            ]
+            
+            code_field = None
+            for selector in selectors:
+                try:
+                    code_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                    break
+                except:
+                    continue
+            
+            if not code_field:
+                print("❌ Could not find 2FA input field")
+                return False
+            
+            # Clear and enter code
+            code_field.clear()
+            code_field.send_keys(code)
+            print(f"✅ Entered 2FA code: {code}")
+            
+            # Submit code
+            submit_selectors = [
+                "button[type='submit']",
+                "input[type='submit']", 
+                "button:contains('Verify')",
+                "button:contains('Submit')",
+                "button:contains('Continue')",
+                "[onclick*='verify']",
+                "[onclick*='submit']"
+            ]
+            
+            submitted = False
+            for selector in submit_selectors:
+                try:
+                    submit = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    submit.click()
+                    submitted = True
+                    print("✅ Submitted 2FA code")
+                    break
+                except:
+                    continue
+            
+            # If no submit button found, try Enter key
+            if not submitted:
+                code_field.send_keys("\n")
+                print("✅ Submitted 2FA code with Enter key")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error entering 2FA code: {e}")
+            return False
     
     def _check_login_success(self) -> bool:
         """Check if login was successful"""
