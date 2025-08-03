@@ -617,30 +617,170 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             return False
     
     def post_listing(self, row):
-        """Post listing to Cellpex"""
+        """Post listing to Cellpex using the correct wholesale inventory form"""
         driver = self.driver
         wait = WebDriverWait(driver, 20)
         
         try:
-            # Navigate to add listing
-            driver.get("https://www.cellpex.com/seller/products/create")
+            # Navigate to Sell Inventory page (discovered during testing)
+            print("📍 Navigating to Cellpex Sell Inventory page...")
+            driver.get("https://www.cellpex.com/list/wholesale-inventory")
             
-            # Product details
-            # Category selection might be needed
+            # Wait for form to load
+            time.sleep(3)
             
-            # Product name
-            name_field = wait.until(EC.presence_of_element_located(
-                (By.NAME, "name")
-            ))
-            name_field.clear()
-            name_field.send_keys(str(row.get("product_name", "")))
+            # Fill form fields based on discovered selectors
+            print("📝 Filling listing form...")
             
-            # Other fields...
-            # Implementation depends on actual Cellpex form structure
+            # Category selection (selCateg)
+            try:
+                category_select = wait.until(EC.presence_of_element_located((By.NAME, "selCateg")))
+                # Default to smartphones/mobile category
+                from selenium.webdriver.support.ui import Select
+                category_dropdown = Select(category_select)
+                # Try to select appropriate category
+                try:
+                    category_dropdown.select_by_visible_text("Smartphones")
+                except:
+                    try:
+                        category_dropdown.select_by_index(1)  # First non-empty option
+                    except:
+                        pass
+                print("✅ Category selected")
+            except Exception as e:
+                print(f"⚠️  Could not select category: {e}")
             
-            return "Success"
+            # Brand selection (selBrand)
+            try:
+                brand_select = wait.until(EC.presence_of_element_located((By.NAME, "selBrand")))
+                brand_dropdown = Select(brand_select)
+                brand = str(row.get("brand", "Apple"))
+                try:
+                    brand_dropdown.select_by_visible_text(brand)
+                except:
+                    try:
+                        brand_dropdown.select_by_index(1)  # First non-empty option
+                    except:
+                        pass
+                print(f"✅ Brand selected: {brand}")
+            except Exception as e:
+                print(f"⚠️  Could not select brand: {e}")
+            
+            # Available quantity (txtAvailable)
+            try:
+                available_field = wait.until(EC.presence_of_element_located((By.NAME, "txtAvailable")))
+                available_field.clear()
+                quantity = str(row.get("quantity", "1"))
+                available_field.send_keys(quantity)
+                print(f"✅ Quantity entered: {quantity}")
+            except Exception as e:
+                print(f"⚠️  Could not enter quantity: {e}")
+            
+            # Brand/Model description (txtBrandModel)
+            try:
+                brand_model_field = wait.until(EC.presence_of_element_located((By.NAME, "txtBrandModel")))
+                brand_model_field.clear()
+                product_name = f"{row.get('brand', 'Apple')} {row.get('model', 'iPhone 14 Pro')} {row.get('memory', '128GB')}"
+                brand_model_field.send_keys(product_name)
+                print(f"✅ Product name entered: {product_name}")
+            except Exception as e:
+                print(f"⚠️  Could not enter product name: {e}")
+            
+            # Comments/Description (areaComments)
+            try:
+                comments_field = wait.until(EC.presence_of_element_located((By.NAME, "areaComments")))
+                comments_field.clear()
+                description = str(row.get("description", f"High quality {row.get('brand', 'Apple')} device in {row.get('condition', 'excellent')} condition"))
+                comments_field.send_keys(description)
+                print("✅ Description entered")
+            except Exception as e:
+                print(f"⚠️  Could not enter description: {e}")
+            
+            # Remarks (areaRemarks)
+            try:
+                remarks_field = wait.until(EC.presence_of_element_located((By.NAME, "areaRemarks")))
+                remarks_field.clear()
+                remarks = f"Condition: {row.get('condition', 'Excellent')} | Memory: {row.get('memory', '128GB')} | Color: {row.get('color', 'Space Black')}"
+                remarks_field.send_keys(remarks)
+                print("✅ Remarks entered")
+            except Exception as e:
+                print(f"⚠️  Could not enter remarks: {e}")
+            
+            # Take screenshot before submitting
+            driver.save_screenshot("cellpex_listing_filled.png")
+            print("📸 Screenshot saved: cellpex_listing_filled.png")
+            
+            # Submit the form
+            print("📤 Submitting listing...")
+            submit_selectors = [
+                "button[type='submit']",
+                "input[type='submit']",
+                "//button[contains(text(), 'Save')]",
+                "//button[contains(text(), 'Submit')]",
+                "//input[@value='Save']",
+                "//input[@value='Submit']"
+            ]
+            
+            submitted = False
+            for selector in submit_selectors:
+                try:
+                    if selector.startswith("//"):
+                        submit_btn = driver.find_element(By.XPATH, selector)
+                    else:
+                        submit_btn = driver.find_element(By.CSS_SELECTOR, selector)
+                    
+                    submit_btn.click()
+                    submitted = True
+                    print(f"✅ Form submitted using: {selector}")
+                    break
+                except:
+                    continue
+            
+            if not submitted:
+                print("⚠️  Could not find submit button, trying Enter key...")
+                # Try Enter key on the last field
+                try:
+                    remarks_field = driver.find_element(By.NAME, "areaRemarks")
+                    remarks_field.send_keys("\n")
+                    submitted = True
+                    print("✅ Form submitted using Enter key")
+                except:
+                    pass
+            
+            if submitted:
+                # Wait for response
+                time.sleep(5)
+                
+                # Check for success indicators
+                current_url = driver.current_url
+                page_text = driver.page_source.lower()
+                
+                success_indicators = ["success", "created", "saved", "posted", "added"]
+                error_indicators = ["error", "failed", "invalid", "required"]
+                
+                has_success = any(indicator in page_text for indicator in success_indicators)
+                has_error = any(indicator in page_text for indicator in error_indicators)
+                
+                if has_success and not has_error:
+                    print("🎉 Listing posted successfully!")
+                    driver.save_screenshot("cellpex_listing_success.png")
+                    return "Success: Listing posted to Cellpex"
+                elif has_error:
+                    print("❌ Error detected in response")
+                    driver.save_screenshot("cellpex_listing_error.png")
+                    return "Error: Form submission failed - check required fields"
+                else:
+                    print("⚠️  Uncertain response - manual verification needed")
+                    driver.save_screenshot("cellpex_listing_uncertain.png")
+                    return "Uncertain: Manual verification needed"
+            else:
+                print("❌ Could not submit form")
+                driver.save_screenshot("cellpex_listing_no_submit.png")
+                return "Error: Could not submit form"
             
         except Exception as e:
+            print(f"❌ Error posting to Cellpex: {e}")
+            driver.save_screenshot("cellpex_listing_exception.png")
             return f"Error: {str(e)}"
 
 
