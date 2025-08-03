@@ -1101,8 +1101,8 @@ async def test_gmail_search(platform: str = "gsmexchange"):
             "total_codes_found": len(codes),
             "latest_code": latest_code,
             "search_details": {
-                "target_email": gmail_service.target_email,
-                "search_timeframe": "60 minutes",
+                "authentication_method": "OAuth 2.0",
+                "search_timeframe": "60 minutes", 
                 "codes_found": codes[:3]  # Return first 3 for privacy
             }
         }

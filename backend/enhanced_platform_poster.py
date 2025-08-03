@@ -254,6 +254,63 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
     PLATFORM = "CELLPEX"
     LOGIN_URL = "https://www.cellpex.com/login"
     
+    def login_with_2fa(self) -> bool:
+        """Enhanced login with 2FA support - Cellpex specific implementation"""
+        driver = self.driver
+        driver.get(self.LOGIN_URL)
+        wait = WebDriverWait(driver, 20)
+        
+        try:
+            print(f"🔐 Logging into {self.PLATFORM}...")
+            
+            # Cellpex-specific selectors
+            user_field = wait.until(EC.presence_of_element_located(
+                (By.NAME, "txtUser")
+            ))
+            user_field.clear()
+            user_field.send_keys(self.username)
+            
+            pass_field = wait.until(EC.presence_of_element_located(
+                (By.NAME, "txtPass")
+            ))
+            pass_field.clear()
+            pass_field.send_keys(self.password)
+            
+            # Submit login using the submit input
+            submit = wait.until(EC.element_to_be_clickable(
+                (By.NAME, "btnLogin")
+            ))
+            submit.click()
+            
+            # Wait a bit for potential redirect
+            time.sleep(3)
+            
+            # Check for 2FA (Cellpex might not use 2FA, but check anyway)
+            if self._check_for_2fa():
+                print(f"📱 2FA required for {self.PLATFORM}")
+                return self._handle_2fa()
+            else:
+                print(f"✅ Logged into {self.PLATFORM} successfully (no 2FA)")
+                # Check if we're logged in by looking for a logout or account link
+                try:
+                    # Look for indicators of successful login
+                    wait.until(EC.any_of(
+                        EC.presence_of_element_located((By.PARTIAL_LINK_TEXT, "logout")),
+                        EC.presence_of_element_located((By.PARTIAL_LINK_TEXT, "account")),
+                        EC.presence_of_element_located((By.PARTIAL_LINK_TEXT, "dashboard"))
+                    ))
+                    return True
+                except TimeoutException:
+                    print("⚠️  Could not confirm successful login")
+                    return False
+                
+        except TimeoutException:
+            print(f"❌ Login timeout for {self.PLATFORM}")
+            return False
+        except Exception as e:
+            print(f"❌ Login error for {self.PLATFORM}: {e}")
+            return False
+    
     def post_listing(self, row):
         """Post listing to Cellpex"""
         driver = self.driver
