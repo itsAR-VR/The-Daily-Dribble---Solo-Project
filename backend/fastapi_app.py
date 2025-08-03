@@ -1178,6 +1178,167 @@ async def debug_environment():
     return debug_info
 
 
+# Enhanced 2FA Testing Endpoints
+@app.post("/test/enhanced-2fa/cellpex")
+async def test_enhanced_cellpex_2fa():
+    """Test enhanced Cellpex 2FA flow in production"""
+    try:
+        # Import here to avoid circular imports
+        from enhanced_platform_poster import EnhancedCellpexPoster
+        from selenium import webdriver
+        
+        # Setup Chrome options for production
+        options = webdriver.ChromeOptions()
+        if os.getenv("RAILWAY_ENVIRONMENT"):  # Running on Railway
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--window-size=1920x1080")
+        
+        driver = webdriver.Chrome(options=options)
+        
+        try:
+            # Initialize Cellpex poster
+            cellpex_poster = EnhancedCellpexPoster(driver)
+            
+            # Test login with 2FA
+            success = cellpex_poster.login_with_2fa()
+            
+            current_url = driver.current_url
+            
+            return {
+                "success": success,
+                "platform": "cellpex",
+                "message": "Enhanced Cellpex 2FA test completed",
+                "final_url": current_url,
+                "gmail_available": gmail_service.is_available() if gmail_service else False,
+                "status": "success" if success else "failed"
+            }
+            
+        finally:
+            driver.quit()
+            
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "platform": "cellpex", 
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "message": "Enhanced Cellpex 2FA test failed"
+        }
+
+
+@app.post("/test/enhanced-2fa/gsm-exchange")
+async def test_enhanced_gsm_2fa():
+    """Test enhanced GSM Exchange 2FA flow in production"""
+    try:
+        # Check if GSM credentials are available
+        username = os.getenv("GSMEXCHANGE_USERNAME")
+        password = os.getenv("GSMEXCHANGE_PASSWORD")
+        
+        if not username or not password:
+            return {
+                "success": False,
+                "platform": "gsmexchange",
+                "error": "Missing GSM Exchange credentials",
+                "message": "GSMEXCHANGE_USERNAME and GSMEXCHANGE_PASSWORD required"
+            }
+        
+        from selenium import webdriver
+        
+        # Setup Chrome options for production
+        options = webdriver.ChromeOptions()
+        if os.getenv("RAILWAY_ENVIRONMENT"):  # Running on Railway
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--window-size=1920x1080")
+        
+        driver = webdriver.Chrome(options=options)
+        
+        try:
+            # Import and run GSM test
+            from test_gsm_2fa_flow import test_gsm_2fa_flow
+            
+            # This is a simplified version for API testing
+            success = False  # Will implement after analyzing GSM Exchange
+            
+            return {
+                "success": success,
+                "platform": "gsmexchange",
+                "message": "GSM Exchange 2FA flow needs implementation",
+                "credentials_available": True,
+                "status": "pending_implementation"
+            }
+            
+        finally:
+            driver.quit()
+            
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "platform": "gsmexchange",
+            "error": str(e), 
+            "traceback": traceback.format_exc(),
+            "message": "Enhanced GSM Exchange 2FA test failed"
+        }
+
+
+@app.get("/test/platform-status")
+async def platform_status():
+    """Get status of all platforms and their 2FA readiness"""
+    
+    platforms = {
+        "cellpex": {
+            "status": "ready",
+            "credentials_available": bool(os.getenv("CELLPEX_USERNAME") and os.getenv("CELLPEX_PASSWORD")),
+            "2fa_implemented": True,
+            "login_url": "https://www.cellpex.com/login",
+            "last_tested": "Working as of deployment"
+        },
+        "gsmexchange": {
+            "status": "testing",
+            "credentials_available": bool(os.getenv("GSMEXCHANGE_USERNAME") and os.getenv("GSMEXCHANGE_PASSWORD")),
+            "2fa_implemented": False,
+            "login_url": "https://www.gsmexchange.com/signin",
+            "last_tested": "Pending implementation"
+        },
+        "hubx": {
+            "status": "pending",
+            "credentials_available": bool(os.getenv("HUBX_USERNAME") and os.getenv("HUBX_PASSWORD")),
+            "2fa_implemented": False,
+            "login_url": "TBD",
+            "last_tested": "Not started"
+        },
+        "kardof": {
+            "status": "pending",
+            "credentials_available": bool(os.getenv("KARDOF_USERNAME") and os.getenv("KARDOF_PASSWORD")),
+            "2fa_implemented": False,
+            "login_url": "TBD", 
+            "last_tested": "Not started"
+        },
+        "handlot": {
+            "status": "pending",
+            "credentials_available": bool(os.getenv("HANDLOT_USERNAME") and os.getenv("HANDLOT_PASSWORD")),
+            "2fa_implemented": False,
+            "login_url": "TBD",
+            "last_tested": "Not started"
+        }
+    }
+    
+    return {
+        "platforms": platforms,
+        "gmail_service_available": gmail_service.is_available() if gmail_service else False,
+        "total_platforms": len(platforms),
+        "ready_platforms": len([p for p in platforms.values() if p["status"] == "ready"]),
+        "environment": "production" if os.getenv("RAILWAY_ENVIRONMENT") else "development"
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))

@@ -90,18 +90,18 @@ class GmailService:
             # Format date for Gmail search (YYYY/MM/DD format)
             after_date = search_from.strftime("%Y/%m/%d")
             
-            # Platform-specific search queries
+            # Platform-specific search queries - simplified for better results
             platform_queries = {
-                'gsmexchange': 'from:noreply@gsmexchange.com OR from:support@gsmexchange.com OR subject:"GSM Exchange" OR subject:"verification code"',
-                'cellpex': 'from:noreply@cellpex.com OR from:support@cellpex.com OR subject:"Cellpex" OR subject:"verification code"',
-                'kardof': 'from:noreply@kardof.com OR from:support@kardof.com OR subject:"Kardof" OR subject:"verification code"',
-                'hubx': 'from:noreply@hubx.com OR from:support@hubx.com OR subject:"HubX" OR subject:"verification code"',
-                'handlot': 'from:noreply@handlot.com OR from:support@handlot.com OR subject:"Handlot" OR subject:"verification code"'
+                'gsmexchange': 'from:gsmexchange.com',
+                'cellpex': 'from:cellpex.com',
+                'kardof': 'from:kardof.com',
+                'hubx': 'from:hubx.com',
+                'handlot': 'from:handlot.com'
             }
             
-            # Build search query
-            base_query = platform_queries.get(platform.lower(), f'subject:"{platform}" OR subject:"verification code"')
-            query = f'({base_query}) after:{after_date} (verification OR code OR authenticate OR login OR security)'
+            # Build search query - much simpler to catch more emails
+            base_query = platform_queries.get(platform.lower(), f'from:{platform}.com')
+            query = f'{base_query} after:{after_date}'
             
             print(f"🔍 Searching Gmail with query: {query}")
             

@@ -465,30 +465,155 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             # Wait a bit for potential redirect
             time.sleep(3)
             
-            # Check for 2FA (Cellpex might not use 2FA, but check anyway)
-            if self._check_for_2fa():
+            # Check if we're on 2FA page (check URL)
+            current_url = driver.current_url
+            if "login_verify" in current_url:
                 print(f"📱 2FA required for {self.PLATFORM}")
-                return self._handle_2fa()
+                return self._handle_cellpex_2fa()
             else:
                 print(f"✅ Logged into {self.PLATFORM} successfully (no 2FA)")
-                # Check if we're logged in by looking for a logout or account link
-                try:
-                    # Look for indicators of successful login
-                    wait.until(EC.any_of(
-                        EC.presence_of_element_located((By.PARTIAL_LINK_TEXT, "logout")),
-                        EC.presence_of_element_located((By.PARTIAL_LINK_TEXT, "account")),
-                        EC.presence_of_element_located((By.PARTIAL_LINK_TEXT, "dashboard"))
-                    ))
-                    return True
-                except TimeoutException:
-                    print("⚠️  Could not confirm successful login")
-                    return False
+                return self._check_cellpex_login_success()
                 
         except TimeoutException:
             print(f"❌ Login timeout for {self.PLATFORM}")
             return False
         except Exception as e:
             print(f"❌ Login error for {self.PLATFORM}: {e}")
+            return False
+    
+    def _check_cellpex_login_success(self) -> bool:
+        """Check if Cellpex login was successful"""
+        driver = self.driver
+        current_url = driver.current_url
+        
+        # Success if we're not on login/verify pages
+        if "login" not in current_url and "verify" not in current_url:
+            print(f"✅ {self.PLATFORM} login successful - URL: {current_url}")
+            return True
+        else:
+            print(f"❌ {self.PLATFORM} login failed - still on: {current_url}")
+            return False
+    
+    def _handle_cellpex_2fa(self) -> bool:
+        """Handle Cellpex-specific 2FA flow"""
+        if not self.gmail_service:
+            print("❌ Gmail service not available for 2FA")
+            return False
+            
+        driver = self.driver
+        wait = WebDriverWait(driver, 20)
+        
+        print(f"📧 Waiting for 2FA email from {self.PLATFORM}...")
+        print("⏳ Allowing time for email delivery (10 seconds)...")
+        time.sleep(10)  # Shorter wait for Cellpex
+        
+        for attempt in range(self.max_2fa_attempts):
+            print(f"🔍 Attempt {attempt + 1}/{self.max_2fa_attempts} - Searching for 2FA email...")
+            
+            # Use Cellpex-specific email extraction
+            code = self._extract_cellpex_2fa_code()
+            
+            if code:
+                print(f"✅ Found 2FA code: {code}")
+                
+                # Find the correct 2FA input field (txtCode)
+                if self._enter_cellpex_2fa_code(code, wait):
+                    # Check if login successful
+                    time.sleep(3)
+                    if self._check_cellpex_login_success():
+                        print(f"✅ 2FA successful for {self.PLATFORM}")
+                        return True
+                    else:
+                        print(f"⚠️  2FA code might be incorrect or expired, retrying...")
+                else:
+                    print(f"❌ Failed to enter 2FA code")
+            else:
+                print(f"⚠️  No 2FA code found in recent emails")
+                
+            # Wait before retry
+            if attempt < self.max_2fa_attempts - 1:
+                print("⏳ Waiting 15 seconds before retry...")
+                time.sleep(15)
+                
+        print(f"❌ Failed to complete 2FA for {self.PLATFORM}")
+        return False
+    
+    def _extract_cellpex_2fa_code(self) -> str:
+        """Extract Cellpex verification code using our working method"""
+        if not self.gmail_service or not self.gmail_service.is_available():
+            print("❌ Gmail service not available")
+            return None
+        
+        try:
+            # Use simple query that works
+            query = 'from:cellpex.com after:2025/08/03'
+            print(f"🔍 Searching Gmail with query: {query}")
+            
+            results = self.gmail_service.service.users().messages().list(
+                userId='me',
+                q=query,
+                maxResults=5
+            ).execute()
+            
+            messages = results.get('messages', [])
+            if not messages:
+                print("❌ No Cellpex emails found")
+                return None
+            
+            # Get the latest message
+            msg_id = messages[0]['id']
+            msg_data = self.gmail_service.service.users().messages().get(
+                userId='me',
+                id=msg_id
+            ).execute()
+            
+            # Extract code from snippet
+            snippet = msg_data.get('snippet', '')
+            import re
+            codes = re.findall(r'\b(\d{6})\b', snippet)
+            
+            if codes:
+                code = codes[0]
+                print(f"✅ Found verification code: {code}")
+                return code
+            else:
+                print("❌ No code found in email")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error extracting code: {e}")
+            return None
+    
+    def _enter_cellpex_2fa_code(self, code: str, wait: WebDriverWait) -> bool:
+        """Enter 2FA code specifically for Cellpex"""
+        try:
+            # Look for the Access Code Required text first
+            wait.until(EC.presence_of_element_located(
+                (By.XPATH, "//*[contains(text(), 'Access Code Required')]")
+            ))
+            print("✅ Found 'Access Code Required' text")
+            
+            # Find the txtCode input field specifically
+            code_input = wait.until(EC.presence_of_element_located((By.ID, "txtCode")))
+            print("✅ Found txtCode input field")
+            
+            # Clear and enter the code
+            code_input.clear()
+            time.sleep(1)
+            code_input.send_keys(code)
+            print(f"✅ Code entered in txtCode field: {code}")
+            
+            # Submit using the form submit button
+            submit_btn = wait.until(EC.element_to_be_clickable(
+                (By.XPATH, "//form//input[@type='submit']")
+            ))
+            submit_btn.click()
+            print("✅ Form submitted using submit button")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error entering Cellpex 2FA code: {e}")
             return False
     
     def post_listing(self, row):
