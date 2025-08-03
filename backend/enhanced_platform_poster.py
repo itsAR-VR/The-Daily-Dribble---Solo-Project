@@ -616,6 +616,39 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             print(f"❌ Error entering Cellpex 2FA code: {e}")
             return False
     
+    def _dismiss_popups(self, driver):
+        """Dismiss any popups that might interfere with form interaction"""
+        popup_selectors = [
+            ".eupopup-container",
+            "[class*='cookie']",
+            "[class*='popup']",
+            "[class*='modal']",
+            "[class*='overlay']",
+            "#cookie-banner",
+            ".cookie-consent",
+            ".gdpr-popup"
+        ]
+        
+        dismissed_count = 0
+        
+        for selector in popup_selectors:
+            try:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                for element in elements:
+                    if element.is_displayed():
+                        try:
+                            driver.execute_script("arguments[0].style.display = 'none';", element)
+                            dismissed_count += 1
+                        except:
+                            pass
+            except:
+                continue
+        
+        if dismissed_count > 0:
+            print(f"🍪 Dismissed {dismissed_count} popups/overlays")
+            
+        return dismissed_count > 0
+    
     def post_listing(self, row):
         """Post listing to Cellpex using the correct wholesale inventory form"""
         driver = self.driver
@@ -676,33 +709,41 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             except Exception as e:
                 print(f"⚠️  Could not enter quantity: {e}")
             
-            # Brand/Model description (txtBrandModel)
+            # Brand/Model description (txtBrandModel) - Skip if autocomplete issues
             try:
-                brand_model_field = wait.until(EC.presence_of_element_located((By.NAME, "txtBrandModel")))
-                brand_model_field.clear()
-                product_name = f"{row.get('brand', 'Apple')} {row.get('model', 'iPhone 14 Pro')} {row.get('memory', '128GB')}"
-                brand_model_field.send_keys(product_name)
-                print(f"✅ Product name entered: {product_name}")
+                # Use JavaScript to avoid autocomplete issues
+                product_name = f"{row.get('brand', 'Apple')} {row.get('model', 'iPhone 14 Pro')}"
+                driver.execute_script("""
+                    var field = document.querySelector('[name="txtBrandModel"]');
+                    if (field) {
+                        field.value = arguments[0];
+                        field.dispatchEvent(new Event('change'));
+                    }
+                """, product_name)
+                print(f"✅ Product name set via JavaScript: {product_name}")
             except Exception as e:
-                print(f"⚠️  Could not enter product name: {e}")
+                print(f"⚠️  Skipping product name due to: {e}")
             
-            # Comments/Description (areaComments)
+            # Comments/Description (areaComments) - Use JavaScript injection for reliability
             try:
                 comments_field = wait.until(EC.presence_of_element_located((By.NAME, "areaComments")))
-                comments_field.clear()
                 description = str(row.get("description", f"High quality {row.get('brand', 'Apple')} device in {row.get('condition', 'excellent')} condition"))
-                comments_field.send_keys(description)
-                print("✅ Description entered")
+                # Use JavaScript injection to avoid interaction issues
+                driver.execute_script("arguments[0].value = arguments[1];", comments_field, description)
+                driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", comments_field)
+                print("✅ Description entered (JavaScript injection)")
             except Exception as e:
                 print(f"⚠️  Could not enter description: {e}")
             
-            # Remarks (areaRemarks)
+            # Remarks (areaRemarks) - Enhanced with memory info, using JavaScript injection
             try:
                 remarks_field = wait.until(EC.presence_of_element_located((By.NAME, "areaRemarks")))
-                remarks_field.clear()
-                remarks = f"Condition: {row.get('condition', 'Excellent')} | Memory: {row.get('memory', '128GB')} | Color: {row.get('color', 'Space Black')}"
-                remarks_field.send_keys(remarks)
-                print("✅ Remarks entered")
+                # ✅ Include memory in remarks since it's no longer in product name
+                remarks = f"Memory: {row.get('memory', '128GB')} | Condition: {row.get('condition', 'Excellent')} | Color: {row.get('color', 'Space Black')}"
+                # Use JavaScript injection to avoid interaction issues
+                driver.execute_script("arguments[0].value = arguments[1];", remarks_field, remarks)
+                driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", remarks_field)
+                print("✅ Remarks entered (JavaScript injection with memory info)")
             except Exception as e:
                 print(f"⚠️  Could not enter remarks: {e}")
             
@@ -710,17 +751,29 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             driver.save_screenshot("cellpex_listing_filled.png")
             print("📸 Screenshot saved: cellpex_listing_filled.png")
             
-            # Submit the form
-            print("📤 Submitting listing...")
+                        # Enhanced submit with popup handling
+            print("📤 Submitting listing with enhanced popup handling...")
+            
+            # Step 1: Dismiss popups first
+            self._dismiss_popups(driver)
+            
+            # Step 2: Scroll to bottom to reveal submit area
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(2)
+            
+            # Step 3: Dismiss popups again after scroll
+            self._dismiss_popups(driver)
+            
             submit_selectors = [
-                "button[type='submit']",
                 "input[type='submit']",
+                "button[type='submit']",
+                "input[name='btnSubmit']",
                 "//button[contains(text(), 'Save')]",
                 "//button[contains(text(), 'Submit')]",
                 "//input[@value='Save']",
                 "//input[@value='Submit']"
             ]
-            
+
             submitted = False
             for selector in submit_selectors:
                 try:
@@ -728,14 +781,30 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         submit_btn = driver.find_element(By.XPATH, selector)
                     else:
                         submit_btn = driver.find_element(By.CSS_SELECTOR, selector)
-                    
-                    submit_btn.click()
-                    submitted = True
-                    print(f"✅ Form submitted using: {selector}")
-                    break
+
+                    if submit_btn.is_displayed():
+                        # Scroll to submit button
+                        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", submit_btn)
+                        time.sleep(2)
+                        
+                        # Final popup dismissal
+                        self._dismiss_popups(driver)
+                        
+                        # Try JavaScript click first (most reliable)
+                        try:
+                            driver.execute_script("arguments[0].click();", submit_btn)
+                            submitted = True
+                            print(f"✅ Form submitted using JavaScript click: {selector}")
+                            break
+                        except:
+                            # Fallback to regular click
+                            submit_btn.click()
+                            submitted = True
+                            print(f"✅ Form submitted using regular click: {selector}")
+                            break
                 except:
                     continue
-            
+
             if not submitted:
                 print("⚠️  Could not find submit button, trying Enter key...")
                 # Try Enter key on the last field
