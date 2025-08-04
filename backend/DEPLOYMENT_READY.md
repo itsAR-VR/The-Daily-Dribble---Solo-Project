@@ -43,8 +43,8 @@ Copy these to Railway's Variables tab:
 
 ```env
 # Gmail OAuth (from standalone_oauth_completion.py)
-GMAIL_CLIENT_ID=[Your Gmail Client ID]
-GMAIL_CLIENT_SECRET=[Your Gmail Client Secret]
+GMAIL_CLIENT_ID=[Your Gmail Client ID from Railway variables]
+GMAIL_CLIENT_SECRET=[Your Gmail Client Secret from Railway variables]
 GMAIL_REFRESH_TOKEN=[Get from standalone_oauth_completion.py]
 
 # OpenAI
