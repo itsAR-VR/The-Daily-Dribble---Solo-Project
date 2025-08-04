@@ -1,198 +1,73 @@
 #!/bin/bash
-# Railway Deployment Script for Multi-Platform Listing Bot
+# Deploy Anti-Hallucination Bot to Railway
 
-echo "🚀 Deploying Multi-Platform Listing Bot to Railway..."
+echo "🚂 Deploying Anti-Hallucination Bot to Railway..."
 
-# Check if we're in the right directory
-if [ ! -f "fastapi_app.py" ]; then
-    echo "❌ Error: Must run from backend directory"
-    exit 1
-fi
-
-# Ensure Railway CLI is installed
+# Check if Railway CLI is installed
 if ! command -v railway &> /dev/null; then
-    echo "❌ Railway CLI not found. Install with: npm install -g @railway/cli"
-    exit 1
+    echo "❌ Railway CLI not found. Installing..."
+    npm i -g @railway/cli
 fi
 
-# Step 1: Update requirements.txt
-echo "📦 Updating requirements.txt..."
-cat > requirements.txt << EOF
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pandas==2.1.3
-openpyxl==3.1.2
-selenium==4.15.2
-python-dotenv==1.0.0
-python-multipart==0.0.6
-google-auth==2.23.4
-google-auth-oauthlib==1.1.0
-google-auth-httplib2==0.1.1
-google-api-python-client==2.108.0
-openai==1.3.5
-requests==2.31.0
-EOF
+# Login to Railway
+echo "📝 Logging into Railway..."
+railway login --browserless
 
-# Step 2: Create production Dockerfile
-echo "🐳 Creating production Dockerfile..."
-cat > Dockerfile << 'EOF'
-# Use browserless/chrome as base for Selenium support
-FROM browserless/chrome:latest
+# Initialize or link project
+if [ ! -f ".railway/config.json" ]; then
+    echo "🔗 Initializing new Railway project..."
+    railway init --name "marketplace-bot-anti-hallucination"
+else
+    echo "✅ Railway project already linked"
+fi
 
-# Install Python 3.11
-USER root
-RUN apt-get update && apt-get install -y \
-    python3.11 \
-    python3-pip \
-    python3-venv \
-    && rm -rf /var/lib/apt/lists/*
+# Set environment variables
+echo "🔐 Setting environment variables..."
 
-# Create and use virtual environment
-RUN python3.11 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Gmail OAuth
+railway variables set GMAIL_CLIENT_ID="${GMAIL_CLIENT_ID}" 
+railway variables set GMAIL_CLIENT_SECRET="${GMAIL_CLIENT_SECRET}"
+railway variables set GMAIL_REFRESH_TOKEN="${GMAIL_REFRESH_TOKEN}"
 
-# Set working directory
-WORKDIR /app
+# OpenAI
+railway variables set OPENAI_API_KEY="${OPENAI_API_KEY}"
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Cellpex
+railway variables set CELLPEX_USERNAME="${CELLPEX_USERNAME}"
+railway variables set CELLPEX_PASSWORD="${CELLPEX_PASSWORD}"
 
-# Copy all application files
-COPY . .
+# GSM Exchange
+railway variables set GSM_EXCHANGE_USERNAME="${GSM_EXCHANGE_USERNAME}"
+railway variables set GSM_EXCHANGE_PASSWORD="${GSM_EXCHANGE_PASSWORD}"
 
-# Create jobs directory
-RUN mkdir -p jobs
+# Other platforms (if available)
+if [ ! -z "${KARDOF_USERNAME}" ]; then
+    railway variables set KARDOF_USERNAME="${KARDOF_USERNAME}"
+    railway variables set KARDOF_PASSWORD="${KARDOF_PASSWORD}"
+fi
 
-# Set environment variables for Chrome
-ENV CHROME_BIN=/usr/bin/google-chrome
-ENV CHROME_PATH=/usr/bin/google-chrome
-ENV PYTHONUNBUFFERED=1
+if [ ! -z "${HUBX_USERNAME}" ]; then
+    railway variables set HUBX_USERNAME="${HUBX_USERNAME}"
+    railway variables set HUBX_PASSWORD="${HUBX_PASSWORD}"
+fi
 
-# Expose port
-EXPOSE $PORT
+if [ ! -z "${HANDLOT_USERNAME}" ]; then
+    railway variables set HANDLOT_USERNAME="${HANDLOT_USERNAME}"
+    railway variables set HANDLOT_PASSWORD="${HANDLOT_PASSWORD}"
+fi
 
-# Start command with enhanced logging
-CMD ["sh", "-c", "uvicorn fastapi_app:app --host 0.0.0.0 --port $PORT --log-level info"]
-EOF
+# Chrome config (Railway handles this)
+railway variables set CHROME_BIN="/usr/bin/chromium"
+railway variables set CHROME_PATH="/usr/bin/chromium"
 
-# Step 3: Create railway.toml configuration
-echo "📝 Creating railway.toml..."
-cat > railway.toml << EOF
-[build]
-builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+# Deploy
+echo "🚀 Deploying to Railway..."
+railway up --detach
 
-[deploy]
-startCommand = "uvicorn fastapi_app:app --host 0.0.0.0 --port \$PORT --log-level info"
-healthcheckPath = "/"
-healthcheckTimeout = 100
-restartPolicyType = "ALWAYS"
+# Get deployment URL
+echo "🌐 Getting deployment URL..."
+railway domain
 
-[environments.production]
-NODE_ENV = "production"
-EOF
-
-# Step 4: Set environment variables
-echo "🔐 Setting environment variables on Railway..."
-
-# Platform credentials
-railway variables set CELLPEX_USERNAME=cellntell
-echo "Set CELLPEX_USERNAME ✅"
-
-# Note: User should set passwords manually for security
-echo "⚠️  Please set these variables manually on Railway dashboard:"
-echo "   - CELLPEX_PASSWORD"
-echo "   - GSMEXCHANGE_USERNAME"
-echo "   - GSMEXCHANGE_PASSWORD"
-echo "   - HUBX_USERNAME"
-echo "   - HUBX_PASSWORD"
-echo "   - OPENAI_API_KEY (optional)"
-
-# Gmail OAuth files need special handling
-echo ""
-echo "📧 For Gmail OAuth:"
-echo "   1. Copy contents of google_oauth_credentials.json"
-echo "   2. Set as GOOGLE_OAUTH_CREDENTIALS environment variable"
-echo "   3. The app will recreate the file at runtime"
-
-# Step 5: Create test endpoint
-echo "🧪 Adding test endpoints to FastAPI..."
-cat >> test_endpoints.py << 'EOF'
-# Test endpoints for Railway deployment
-from fastapi import APIRouter
-from datetime import datetime
-import os
-
-test_router = APIRouter(prefix="/test", tags=["testing"])
-
-@test_router.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "environment": os.getenv("RAILWAY_ENVIRONMENT", "local")
-    }
-
-@test_router.get("/chrome")
-async def test_chrome():
-    """Test Chrome/Selenium availability"""
-    try:
-        from selenium import webdriver
-        options = webdriver.ChromeOptions()
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        
-        driver = webdriver.Chrome(options=options)
-        driver.get("https://www.google.com")
-        title = driver.title
-        driver.quit()
-        
-        return {
-            "chrome_available": True,
-            "test_result": f"Successfully loaded page: {title}"
-        }
-    except Exception as e:
-        return {
-            "chrome_available": False,
-            "error": str(e)
-        }
-
-@test_router.get("/platforms")
-async def test_platforms():
-    """List configured platforms and credentials"""
-    platforms = ["cellpex", "gsmexchange", "hubx", "kardof", "handlot"]
-    status = {}
-    
-    for platform in platforms:
-        user_var = f"{platform.upper()}_USERNAME"
-        pass_var = f"{platform.upper()}_PASSWORD"
-        
-        status[platform] = {
-            "username_set": bool(os.getenv(user_var)),
-            "password_set": bool(os.getenv(pass_var))
-        }
-    
-    return status
-EOF
-
-# Step 6: Commit changes
-echo "📝 Committing changes..."
-git add -A
-git commit -m "🚀 Prepare for Railway deployment with production configuration" || true
-
-# Step 7: Deploy to Railway
-echo ""
-echo "🚀 Ready to deploy! Run these commands:"
-echo ""
-echo "1. Set sensitive environment variables on Railway dashboard"
-echo "2. Deploy with: railway up"
-echo "3. Check logs with: railway logs --tail"
-echo "4. Open app with: railway open"
-echo ""
-echo "📊 After deployment, test with:"
-echo "   curl https://your-app.railway.app/test/health"
-echo "   curl https://your-app.railway.app/test/chrome"
-echo "   curl https://your-app.railway.app/test/platforms"
+echo "✅ Deployment complete!"
+echo "📊 View logs with: railway logs"
+echo "🔗 Open dashboard with: railway open"
