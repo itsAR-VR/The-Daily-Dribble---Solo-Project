@@ -1,0 +1,36 @@
+Context: I need to fill a form field with the following information:
+Field type: dropdown
+Field name: Shipping
+Value to enter: Standard
+
+Please analyze the screenshot and tell me:
+1. Can you see this field?
+2. Is it a dropdown, text input, or autocomplete?
+3. The exact selector to use
+4. Any special steps needed (like clicking to open dropdown first)
+
+Respond in JSON format:
+{
+    "field_visible": true/false,
+    "field_type": "dropdown|text|autocomplete|checkbox|radio",
+    "selector": "exact CSS or XPath",
+    "steps": [
+        {"action": "click|type|select", "selector": "...", "value": "..."}
+    ],
+    "warnings": ["any issues"]
+}
+Analysis: {
+  "page_analysis": "You are on the \u201cWholesale Lots \u203a List Inventory\u201d page in the Smartphones section of the CellPex Network seller interface. The main \u201cList Inventory\u201d form is visible with the \u201cPHONES & TABLETS\u201d radio button selected. Brand & Model is set to \u201cWTS\u201d. Specification dropdowns (Condition, Memory, Color, Market Spec, SIM Lock, Carrier) are unselected. Price and Quantity fields are empty. Minimum Order is set to \u201c1\u201d. In the Shipping row, the first dropdown is currently set to \u201cPacking\u201d, followed by Item weight (0.3 kg) and Incoterms. \u201cAllow local pickup\u201d is checked. There are no visible validation errors or pop-ups blocking the form.",
+  "current_state": "Logged in, on the List Inventory form, ready to select a different shipping method.",
+  "next_action": "select",
+  "selector": "//label[normalize-space(text())='Shipping']/following-sibling::select[1]",
+  "action_details": {
+    "value": "Standard",
+    "description": "Change the Shipping dropdown selection from \u201cPacking\u201d to \u201cStandard.\u201d"
+  },
+  "warnings": [
+    "Ensure that the \u201cStandard\u201d option exists in the dropdown before selecting.",
+    "After selecting, verify that the label updates and no validation messages appear."
+  ],
+  "confidence": "high"
+}

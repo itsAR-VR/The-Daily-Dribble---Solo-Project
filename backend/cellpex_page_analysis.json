@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-08-03T05:00:00.975712",
+  "visible_inputs": [],
+  "buttons": [],
+  "page_info": {
+    "bodyClasses": "eupopup eupopup-bottom eupopup-style-compact",
+    "forms": 2,
+    "hasAngular": false,
+    "hasJQuery": true,
+    "hasReact": false,
+    "iframes": 0,
+    "scripts": 17,
+    "title": "List Inventory | Cellpex"
+  }
+}

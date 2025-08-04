@@ -1,0 +1,65 @@
+Context: I need to fill a form field with the following information:
+Field type: autocomplete
+Field name: Carrier
+Value to enter: 
+
+Please analyze the screenshot and tell me:
+1. Can you see this field?
+2. Is it a dropdown, text input, or autocomplete?
+3. The exact selector to use
+4. Any special steps needed (like clicking to open dropdown first)
+
+Respond in JSON format:
+{
+    "field_visible": true/false,
+    "field_type": "dropdown|text|autocomplete|checkbox|radio",
+    "selector": "exact CSS or XPath",
+    "steps": [
+        {"action": "click|type|select", "selector": "...", "value": "..."}
+    ],
+    "warnings": ["any issues"]
+}
+Analysis: {
+  "field_visible": true,
+  "field_type": "autocomplete",
+  "selector": "css=input[name=\"carrier\"]",
+  "steps": [
+    {
+      "action": "click",
+      "selector": "css=input[name=\"carrier\"]",
+      "value": ""
+    },
+    {
+      "action": "type",
+      "selector": "css=input[name=\"carrier\"]",
+      "value": "<CarrierName>"
+    },
+    {
+      "action": "wait",
+      "selector": "css=ul[role=\"listbox\"] li",
+      "value": ""
+    },
+    {
+      "action": "click",
+      "selector": "css=ul[role=\"listbox\"] li:nth-child(1)",
+      "value": ""
+    }
+  ],
+  "warnings": [
+    "Ensure the autocomplete suggestion list has appeared before selecting.",
+    "If the carrier name does not match exactly, suggestions may not show."
+  ],
+  "page_analysis": "The user is logged in (seen via 'My Account | Sign Out'), on the Wholesale Lots \u203a List Inventory page. The PHONES & TABLETS tab is selected. The form shows fields for Brand & Model, Condition, Memory, Color, Market Spec, SIM Lock, Carrier (empty), Price, Quantity, Min. Order, Shipping, Item weight, Incoterms, plus options for multiple rates and local pickup. A cookie consent banner is pinned at the bottom but does not block the form.",
+  "current_state": "On the listing form for smartphones (PHONES & TABLETS) with all fields visible; the Carrier input is empty and ready for entry.",
+  "next_action": "select",
+  "selector_for_next_action": "css=input[name=\"carrier\"]",
+  "action_details": {
+    "value": "<CarrierName>",
+    "description": "Click into the Carrier autocomplete, type the carrier name, wait for suggestions, then select the first matching item."
+  },
+  "warnings_flow": [
+    "The autocomplete dropdown may take a moment to load suggestions; include a wait-for-element step before clicking a suggestion.",
+    "If no suggestions appear, verify that the typed value matches one of the system\u2019s predefined carriers."
+  ],
+  "confidence": "high"
+}

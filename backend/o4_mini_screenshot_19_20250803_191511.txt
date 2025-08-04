@@ -1,0 +1,51 @@
+Context: I need to fill a form field with the following information:
+Field type: text
+Field name: Price
+Value to enter: 999.99
+
+Please analyze the screenshot and tell me:
+1. Can you see this field?
+2. Is it a dropdown, text input, or autocomplete?
+3. The exact selector to use
+4. Any special steps needed (like clicking to open dropdown first)
+
+Respond in JSON format:
+{
+    "field_visible": true/false,
+    "field_type": "dropdown|text|autocomplete|checkbox|radio",
+    "selector": "exact CSS or XPath",
+    "steps": [
+        {"action": "click|type|select", "selector": "...", "value": "..."}
+    ],
+    "warnings": ["any issues"]
+}
+Analysis: {
+  "field_info": {
+    "field_visible": true,
+    "field_type": "text",
+    "selector": "//label[normalize-space()='Price']/following-sibling::div//input",
+    "steps": [
+      {
+        "action": "type",
+        "selector": "//label[normalize-space()='Price']/following-sibling::div//input",
+        "value": "999.99"
+      }
+    ],
+    "warnings": []
+  },
+  "page_context": {
+    "page_analysis": "You are on the \u201cWholesale Lots \u203a List Inventory\u201d page with the \u201cPHONES & TABLETS\u201d tab selected. The form shows fields for Brand & Model (WTS entered), Condition, Memory, Color, Market Spec, SIM Lock, Carrier, Price (empty text input next to a USD dropdown), Quantity, Min. Order, Shipping, Item weight, Incoterms, Multiple rates toggle, Allow local pickup checkbox (checked), and a photo upload area. A cookie consent banner is pinned to the bottom but does not cover any form fields. The user is logged in (My Account | Sign Out visible) and the listing form is fully in view.",
+    "current_state": "Idle on the listing form, ready to populate the Price field.",
+    "next_action": "type",
+    "selector": "//label[normalize-space()='Price']/following-sibling::div//input",
+    "action_details": {
+      "value": "999.99",
+      "description": "Enter the value 999.99 into the Price input field."
+    },
+    "warnings": [
+      "Make sure required fields (Brand & Model, Condition, etc.) are filled before submitting.",
+      "Currency defaults to USD; if a different currency is needed, select it from the adjacent dropdown first."
+    ],
+    "confidence": "high"
+  }
+}

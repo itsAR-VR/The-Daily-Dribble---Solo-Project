@@ -1,0 +1,36 @@
+Context: I need to fill a form field with the following information:
+Field type: dropdown
+Field name: SIM Lock
+Value to enter: Unlocked
+
+Please analyze the screenshot and tell me:
+1. Can you see this field?
+2. Is it a dropdown, text input, or autocomplete?
+3. The exact selector to use
+4. Any special steps needed (like clicking to open dropdown first)
+
+Respond in JSON format:
+{
+    "field_visible": true/false,
+    "field_type": "dropdown|text|autocomplete|checkbox|radio",
+    "selector": "exact CSS or XPath",
+    "steps": [
+        {"action": "click|type|select", "selector": "...", "value": "..."}
+    ],
+    "warnings": ["any issues"]
+}
+Analysis: {
+  "page_analysis": "You are on the Wholesale Lots \u203a List Inventory page showing the listing form for PHONES & TABLETS. The form fields visible include Brand & Model (pre-filled with WTS), Condition, Memory, Color, Market Spec, SIM Lock (dropdown), Carrier, Price, Quantity, Min. Order, Shipping, Item weight, Incoterms, plus options for multiple rates and local pickup. A cookie consent banner is pinned at the bottom but does not block the form.",
+  "current_state": "User is logged in (My Account / Sign Out link visible) and is on the List Inventory form with Brand & Model filled and all form fields displayed.",
+  "next_action": "select",
+  "selector": "//label[normalize-space()=\"SIM Lock\"]/following-sibling::*//select[1]",
+  "action_details": {
+    "value": "Unlocked",
+    "description": "Select the 'Unlocked' option from the SIM Lock dropdown."
+  },
+  "warnings": [
+    "The 'Unlocked' option is only visible after opening the dropdown; ensure the dropdown is expanded before selecting.",
+    "If the option text differs (e.g. uppercase/lowercase), adjust the value accordingly."
+  ],
+  "confidence": "high"
+}

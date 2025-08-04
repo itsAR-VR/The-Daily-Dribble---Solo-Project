@@ -1,0 +1,16 @@
+Context: Find and click the 'Sell Inventory' button
+Analysis: {
+  "page_analysis": "The screenshot shows the logged\u2010in dashboard for user \u201ccellIntell\u201d. At the top left is the CellPex logo, a search box with placeholder \u201cSmartphones\u201d and a filter icon. To the right of that is a drop\u2010down showing \u201cSmartphones\u201d. On the far right of the header is a prominent blue \u201cSell Inventory\u201d button. Below the header is a left\u2010hand navigation panel with sections (Buyers, Sellers, Messages, Networking, etc.); under Sellers there is also a smaller \u201cSell Inventory\u201d link. The main content area shows \u201cMy Summary\u201d with inbox/purchases/sales, news panels, and an expired LinkedIn token notice. No form is currently visible.",
+  "current_state": "Dashboard (home) page, logged in as cellIntell. No inventory form open.",
+  "next_action": "click",
+  "selector": "xpath=//a[contains(@class,'btn-primary') and normalize-space(text())='Sell Inventory']",
+  "action_details": {
+    "value": "",
+    "description": "Clicks the primary (blue) Sell Inventory button in the top navigation to open the Sell Inventory form."
+  },
+  "warnings": [
+    "There is a secondary \u201cSell Inventory\u201d link in the left navigation; ensure the top\u2010right button is clicked.",
+    "Make sure the page has fully loaded and no cookie banner is overlaying the button."
+  ],
+  "confidence": "high"
+}

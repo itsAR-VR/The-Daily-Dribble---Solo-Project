@@ -1,0 +1,52 @@
+Context: I need to fill a form field with the following information:
+Field type: text
+Field name: Min Order
+Value to enter: 1
+
+Please analyze the screenshot and tell me:
+1. Can you see this field?
+2. Is it a dropdown, text input, or autocomplete?
+3. The exact selector to use
+4. Any special steps needed (like clicking to open dropdown first)
+
+Respond in JSON format:
+{
+    "field_visible": true/false,
+    "field_type": "dropdown|text|autocomplete|checkbox|radio",
+    "selector": "exact CSS or XPath",
+    "steps": [
+        {"action": "click|type|select", "selector": "...", "value": "..."}
+    ],
+    "warnings": ["any issues"]
+}
+Analysis: {
+  "field_info": {
+    "field_visible": true,
+    "field_type": "text",
+    "selector": "input[name=\"min_order\"]",
+    "steps": [
+      {
+        "action": "click",
+        "selector": "input[name=\"min_order\"]"
+      },
+      {
+        "action": "type",
+        "selector": "input[name=\"min_order\"]",
+        "value": "1"
+      }
+    ],
+    "warnings": []
+  },
+  "page_info": {
+    "page_analysis": "The screen shows the \u2018Wholesale Lots \u203a List Inventory\u2019 form under the Smartphones category. The \u2018PHONES & TABLETS\u2019 radio button is selected. Fields for Brand & Model (WTS pre-filled), Condition, Memory, Color, Market Spec, SIM Lock, Carrier, Price (with USD), Quantity, Min. Order (currently blank), Shipping (Packing), Item weight (0.3 kg), and Incoterms are visible. The \u2018Allow local pickup\u2019 checkbox is checked. The navigation bar shows \u2018My Account | Sign Out\u2019, confirming user is logged in.",
+    "current_state": "On the List Inventory form page, ready to enter the Min. Order field.",
+    "next_action": "type",
+    "selector": "input[name=\"min_order\"]",
+    "action_details": {
+      "value": "1",
+      "description": "Populate the Minimum Order quantity field"
+    },
+    "warnings": [],
+    "confidence": "high"
+  }
+}

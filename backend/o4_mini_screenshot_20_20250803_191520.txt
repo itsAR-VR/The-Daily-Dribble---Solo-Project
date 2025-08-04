@@ -1,0 +1,33 @@
+Context: Compare these two screenshots and tell me if the following action was successful:
+Expected result: Field Price filled with 999.99
+
+Analyze what changed between the screenshots and determine if:
+1. The action completed successfully
+2. Any errors appeared
+3. The page state changed as expected
+
+Respond in JSON format:
+{
+    "success": true/false,
+    "what_changed": "description of changes",
+    "errors_visible": ["any error messages"],
+    "confidence": "high|medium|low"
+}
+Analysis: {
+  "success": false,
+  "what_changed": "No change: the Price input remains empty in the second screenshot (it was empty in the first).",
+  "errors_visible": [],
+  "confidence": "high",
+  "page_analysis": "You are on the \u201cWholesale Lots \u203a List Inventory\u201d page, PHONES & TABLETS tab. The Brand & Model field contains \u201cWTS\u201d. All dropdowns (Condition, Memory, Color, Market Spec, SIM Lock) are unselected. The Carrier field is empty. Below that, the Price input is blank with a USD selector to its right. Quantity is empty, Min. Order is set to 1. Shipping is set to \u201cPacking\u201d, Item weight is \u201c0.3 kg\u201d, Incoterms dropdown is unselected, and \u201cAllow local pickup\u201d is checked. No error messages or modals are visible. The cookie consent banner is pinned at the bottom but does not obscure the form.",
+  "current_state": "Still on the listing form, waiting for input in the Price field; no errors or confirmations present.",
+  "next_action": "type",
+  "selector": "XPath: //label[normalize-space(text())='Price']/following::input[1]",
+  "action_details": {
+    "value": "999.99",
+    "description": "Types the expected price into the Price field."
+  },
+  "warnings": [
+    "Ensure the currency dropdown remains on USD; typing non-numeric characters may be rejected.",
+    "Verify locale decimal separator if the site expects commas instead of dots."
+  ]
+}

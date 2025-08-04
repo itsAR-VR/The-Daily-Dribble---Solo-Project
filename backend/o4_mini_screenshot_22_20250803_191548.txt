@@ -1,0 +1,38 @@
+Context: Compare these two screenshots and tell me if the following action was successful:
+Expected result: Field Currency filled with USD
+
+Analyze what changed between the screenshots and determine if:
+1. The action completed successfully
+2. Any errors appeared
+3. The page state changed as expected
+
+Respond in JSON format:
+{
+    "success": true/false,
+    "what_changed": "description of changes",
+    "errors_visible": ["any error messages"],
+    "confidence": "high|medium|low"
+}
+Analysis: {
+  "result": {
+    "success": true,
+    "what_changed": "No visible change\u2014both screenshots show the currency dropdown next to the Price field already set to \u201cUSD.\u201d",
+    "errors_visible": [],
+    "confidence": "high"
+  },
+  "next_step": {
+    "page_analysis": "You are on the \u201cWholesale Lots \u203a List Inventory\u201d page, PHONES & TABLETS tab. The form displays fields for Brand & Model (set to \u201cWTS\u201d), Condition, Memory, Color, Market Spec, SIM Lock, Carrier, then Price (empty), a currency dropdown showing \u201cUSD,\u201d Quantity (empty), Min. Order (1), Shipping (Packing), Item weight (0.3 kg), Incoterms (unselected), and an Allow local pickup checkbox. A cookie consent banner is pinned at the bottom but does not overlap the form.",
+    "current_state": "Logged in as a seller, on the List Inventory form, currency already set to USD as expected.",
+    "next_action": "type",
+    "selector": "input[name='price']",
+    "action_details": {
+      "value": "500",
+      "description": "Enter the numeric price in the Price field now that currency is confirmed as USD"
+    },
+    "warnings": [
+      "Ensure the cookie consent banner at the bottom does not obscure the footer if you scroll down.",
+      "Verify all required dropdowns (Condition, Market Spec, Incoterms) are selected before submitting."
+    ],
+    "confidence": "high"
+  }
+}

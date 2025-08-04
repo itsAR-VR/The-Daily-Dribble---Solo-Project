@@ -1,0 +1,38 @@
+Context: Compare these two screenshots and tell me if the following action was successful:
+Expected result: Field Shipping filled with Standard
+
+Analyze what changed between the screenshots and determine if:
+1. The action completed successfully
+2. Any errors appeared
+3. The page state changed as expected
+
+Respond in JSON format:
+{
+    "success": true/false,
+    "what_changed": "description of changes",
+    "errors_visible": ["any error messages"],
+    "confidence": "high|medium|low"
+}
+Analysis: {
+  "comparison": {
+    "success": false,
+    "what_changed": "The Shipping field remains set to \u201cPacking\u201d in both screenshots; it did not change to \u201cStandard.\u201d",
+    "errors_visible": [],
+    "confidence": "high"
+  },
+  "next_step": {
+    "page_analysis": "You are on the \u201cWholesale Lots \u203a List Inventory\u201d page in the Smartphones section. The main \u201cList Inventory\u201d form is visible. All specification dropdowns are unselected. Price and Quantity are empty. The Shipping row shows a dropdown currently set to \u201cPacking\u201d, followed by Item weight (0.3 kg) and an Incoterms dropdown. \u201cAllow local pickup\u201d is checked. There are no validation errors or pop-ups.",
+    "current_state": "Logged in, on the listing page, \u201cList Inventory\u201d form is displayed with Shipping still set to Packing.",
+    "next_action": "select",
+    "selector": "xpath=//label[normalize-space(text())='Shipping']/following-sibling::select[1]",
+    "action_details": {
+      "value": "Standard",
+      "description": "Select the \u201cStandard\u201d option from the Shipping dropdown"
+    },
+    "warnings": [
+      "Ensure the dropdown is fully loaded before selecting to avoid stale element errors.",
+      "After selection, verify that the value persists and that no client-side validation resets the field."
+    ],
+    "confidence": "high"
+  }
+}

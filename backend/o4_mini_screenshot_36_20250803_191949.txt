@@ -1,0 +1,30 @@
+Context: I need to click a button with the text: "Submit"
+
+Please find this button in the screenshot and provide:
+1. The exact selector (prefer ID or unique class)
+2. Confirmation that it's visible and clickable
+3. Any warnings (like if it's disabled)
+
+Respond in JSON format:
+{
+    "found": true/false,
+    "selector": "exact selector or null",
+    "visible": true/false,
+    "clickable": true/false,
+    "warnings": ["any issues"]
+}
+Analysis: {
+  "found": true,
+  "selector": "button[type='submit']",
+  "visible": true,
+  "clickable": true,
+  "warnings": [],
+  "page_analysis": "You are on the Cellpex Network \u203a Wholesale Lots \u203a List Inventory page. The bottom of the form \u2018Add More Details\u2019 is in view, showing a Country dropdown set to \u201cUnited States,\u201d a State text input set to \u201cFlorida,\u201d payment method checkboxes (\u201cWire TT\u201d and \u201cPaypal\u201d are checked), the blue \u201cSubmit\u201d button, and auto-share checkboxes for LinkedIn and Twitter. The footer is visible, and there are no validation errors.",
+  "current_state": "The user is logged in and has navigated to the listing form. All required fields are filled, and the form is ready to be submitted.",
+  "next_action": "click",
+  "action_details": {
+    "value": null,
+    "description": "Click the Submit button to submit the inventory listing form."
+  },
+  "confidence": "high"
+}

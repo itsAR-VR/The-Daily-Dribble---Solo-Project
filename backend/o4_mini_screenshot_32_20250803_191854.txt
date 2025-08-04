@@ -1,0 +1,31 @@
+Context: Compare these two screenshots and tell me if the following action was successful:
+Expected result: Field Weight Unit filled with kg
+
+Analyze what changed between the screenshots and determine if:
+1. The action completed successfully
+2. Any errors appeared
+3. The page state changed as expected
+
+Respond in JSON format:
+{
+    "success": true/false,
+    "what_changed": "description of changes",
+    "errors_visible": ["any error messages"],
+    "confidence": "high|medium|low"
+}
+Analysis: {
+  "success": true,
+  "what_changed": "The weight-unit dropdown remains set to \u201ckg.\u201d No error message appeared. The page view simply scrolled down from the Shipping section into the Add More Details section.",
+  "errors_visible": [],
+  "confidence": "medium",
+  "page_analysis": "You are on the List Inventory page, in the lower \u201cAdd More Details\u201d section (Country, State, Payment, Submit). The Shipping row (Packing, Item weight, Unit, Incoterms) is above and currently out of view.",
+  "current_state": "Scrolled into the Add More Details section after setting the weight unit.",
+  "next_action": "scroll",
+  "selector": "xpath=//label[text()='Item weight']",
+  "action_details": {
+    "description": "Scroll up so the Shipping \u2192 Item weight unit dropdown is back in view for verification."
+  },
+  "warnings": [
+    "Make sure the Shipping section is visible before performing further checks or adjustments."
+  ]
+}

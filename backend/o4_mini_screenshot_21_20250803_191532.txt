@@ -1,0 +1,50 @@
+Context: I need to fill a form field with the following information:
+Field type: dropdown
+Field name: Currency
+Value to enter: USD
+
+Please analyze the screenshot and tell me:
+1. Can you see this field?
+2. Is it a dropdown, text input, or autocomplete?
+3. The exact selector to use
+4. Any special steps needed (like clicking to open dropdown first)
+
+Respond in JSON format:
+{
+    "field_visible": true/false,
+    "field_type": "dropdown|text|autocomplete|checkbox|radio",
+    "selector": "exact CSS or XPath",
+    "steps": [
+        {"action": "click|type|select", "selector": "...", "value": "..."}
+    ],
+    "warnings": ["any issues"]
+}
+Analysis: {
+  "field_info": {
+    "field_visible": true,
+    "field_type": "dropdown",
+    "selector": "select[name=\"currency\"]",
+    "steps": [
+      {
+        "action": "click",
+        "selector": "select[name=\"currency\"]"
+      },
+      {
+        "action": "select",
+        "selector": "select[name=\"currency\"]",
+        "value": "USD"
+      }
+    ],
+    "warnings": []
+  },
+  "page_analysis": "You are on the \u201cWholesale Lots \u203a List Inventory\u201d page under the PHONES & TABLETS tab. The form is visible, with fields for Brand & Model (set to \u201cWTS\u201d), Condition, Memory, Color, Market Spec, SIM Lock, Carrier, then Price, Currency dropdown, Quantity, Min. Order, Shipping, Item weight, Incoterms, and an Allow local pickup checkbox. A cookie consent banner is present at the bottom but does not overlap the form.",
+  "current_state": "Logged in as a seller, on the List Inventory form, with all fields empty except Brand & Model = \u201cWTS\u201d. The Price field is blank and the Currency dropdown currently shows \u201cUSD\u201d.",
+  "next_action": "select",
+  "selector": "select[name=\"currency\"]",
+  "action_details": {
+    "value": "USD",
+    "description": "Open the currency dropdown and choose USD as the currency for the price field."
+  },
+  "warnings": [],
+  "confidence": "high"
+}

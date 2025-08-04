@@ -1,0 +1,36 @@
+Context: I need to fill a form field with the following information:
+Field type: autocomplete
+Field name: Product/Model
+Value to enter: iPhone 14 Pro
+
+Please analyze the screenshot and tell me:
+1. Can you see this field?
+2. Is it a dropdown, text input, or autocomplete?
+3. The exact selector to use
+4. Any special steps needed (like clicking to open dropdown first)
+
+Respond in JSON format:
+{
+    "field_visible": true/false,
+    "field_type": "dropdown|text|autocomplete|checkbox|radio",
+    "selector": "exact CSS or XPath",
+    "steps": [
+        {"action": "click|type|select", "selector": "...", "value": "..."}
+    ],
+    "warnings": ["any issues"]
+}
+Analysis: {
+  "page_analysis": "You are on the \u201cList Inventory\u201d page under Wholesale Lots. The top shows breadcrumbs \u201c\\ Wholesale Lots \\ List Inventory\u201d, and the heading \u201cList Inventory\u201d. Below are radio buttons (PHONES & TABLETS selected), a date picker, and then a form. The first form field is \u201cBrand & Model\u201d with a text input showing placeholder \u201cType model to select from list\u201d (currently containing \u201cWTS\u201d). Other fields (Condition, Memory, Color, etc.) follow. A cookie\u2010consent banner is pinned at the bottom. A left\u2010hand sidebar menu and top nav bar (My Account, Sign Out) are visible.",
+  "current_state": "Logged in and viewing the List Inventory form for Phones & Tablets. The Brand & Model autocomplete field is visible and currently contains \u201cWTS\u201d.",
+  "next_action": "type",
+  "selector": "input[name=\"model\"]",
+  "action_details": {
+    "value": "iPhone 14 Pro",
+    "description": "Click into the Brand & Model autocomplete input, clear any existing text, type \u201ciPhone 14 Pro\u201d, wait for the suggestion dropdown to appear, and then press ENTER or click the matching suggestion to select it."
+  },
+  "warnings": [
+    "Make sure to clear the prefilled value (\u201cWTS\u201d) before typing.",
+    "Wait for the autocomplete suggestion list to render before confirming selection."
+  ],
+  "confidence": "high"
+}

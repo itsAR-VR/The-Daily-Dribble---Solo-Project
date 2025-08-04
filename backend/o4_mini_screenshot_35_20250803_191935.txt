@@ -1,0 +1,16 @@
+Context: Find and fill the Description or Comments text area
+Analysis: {
+  "page_analysis": "You are on the Cellpex Network \u201cWholesale Lots \u203a List Inventory\u201d page, viewing the bottom of a long form. The visible section shows \u201cAdd More Details\u201d (Country dropdown, State input), \u201cPayment\u201d checkboxes, the Submit button, and auto-share options. Higher up (scrolled off-screen) lives the shipping details row (Packing, Item Weight, Unit, Incoterms) and above that the product description/comments textarea you need to fill.",
+  "current_state": "Logged in, on the List Inventory form, scrolled to the bottom. The Description/Comments textarea is present in the form but currently out of view.",
+  "next_action": "scroll",
+  "selector": "xpath=//textarea[contains(@name,'comment') or contains(@id,'comment')]",
+  "action_details": {
+    "value": "",
+    "description": "Scroll the page until the Description/Comments textarea is visible."
+  },
+  "warnings": [
+    "Make sure the form has fully loaded before attempting to scroll.",
+    "If the textarea selector does not match, inspect the form for an alternate name or ID (e.g. description, notes)."
+  ],
+  "confidence": "medium"
+}

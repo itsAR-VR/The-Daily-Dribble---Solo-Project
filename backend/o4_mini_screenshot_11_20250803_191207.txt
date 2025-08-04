@@ -1,0 +1,56 @@
+Context: I need to fill a form field with the following information:
+Field type: dropdown
+Field name: Color
+Value to enter: Space Black
+
+Please analyze the screenshot and tell me:
+1. Can you see this field?
+2. Is it a dropdown, text input, or autocomplete?
+3. The exact selector to use
+4. Any special steps needed (like clicking to open dropdown first)
+
+Respond in JSON format:
+{
+    "field_visible": true/false,
+    "field_type": "dropdown|text|autocomplete|checkbox|radio",
+    "selector": "exact CSS or XPath",
+    "steps": [
+        {"action": "click|type|select", "selector": "...", "value": "..."}
+    ],
+    "warnings": ["any issues"]
+}
+Analysis: {
+  "field_info": {
+    "field_visible": true,
+    "field_type": "dropdown",
+    "selector": "css=select[name=\"color\"]",
+    "steps": [
+      {
+        "action": "click",
+        "selector": "css=select[name=\"color\"]",
+        "value": ""
+      },
+      {
+        "action": "select",
+        "selector": "css=select[name=\"color\"]",
+        "value": "Space Black"
+      }
+    ],
+    "warnings": []
+  },
+  "navigation_info": {
+    "page_analysis": "You are on Cellpex Network\u2019s \u201cList Inventory\u201d page under Wholesale Lots (breadcrumb: Home \u203a Wholesale Lots \u203a List Inventory). The PHONES & TABLETS radio is selected. Date is set to 2025-08-03. The Brand & Model field contains \u201cWTS\u201d. Condition, Memory, Color, Market Spec and SIM Lock dropdowns are at their default placeholders. Carrier, Price (with USD selector), Quantity, Min. Order (set to 1), Shipping (set to Packing), Item weight (0.3 kg), and Incoterms fields are visible. \u201cAllow local pickup\u201d is checked. Photo upload area and a cookie-consent banner at the bottom are present. Top navigation shows \u201cMy Account | Sign Out\u201d.",
+    "current_state": "Logged in and viewing the blank inventory form, ready to fill out Color and other properties.",
+    "next_action": "select",
+    "selector": "css=select[name=\"color\"]",
+    "action_details": {
+      "value": "Space Black",
+      "description": "Opens the Color dropdown and selects the \u201cSpace Black\u201d option"
+    },
+    "warnings": [
+      "Ensure the dropdown has fully rendered before clicking",
+      "If the option list is long, you may need to scroll within the dropdown"
+    ],
+    "confidence": "high"
+  }
+}

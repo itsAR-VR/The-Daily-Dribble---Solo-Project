@@ -1,0 +1,16 @@
+Context: Verify we're on the listing/inventory form page
+Analysis: {
+  "page_analysis": "The screenshot displays the Cellpex Wholesale Network \u2018List Inventory\u2019 page. At the top is the breadcrumb \u201c\\ Wholesale Lots \\ List Inventory.\u201d The page heading \u201cList Inventory\u201d appears just above a form whose first element is a set of radio buttons (PHONES & TABLETS selected, ACCESSORIES, GADGETS). To the right of the radio buttons is a date field set to \u201c2025-08-03\u201d with a calendar icon. Below are these form fields in order: \u2022 Brand & Model (text input, value \u201cWTS\u201d) \u2022 Condition (dropdown) \u2022 Memory (dropdown) \u2022 Color (dropdown) \u2022 Market Spec (dropdown) \u2022 SIM Lock (dropdown) \u2022 Carrier (text input) \u2022 Price (text input) + currency selector (USD) \u2022 Quantity (text input) \u2022 Min. Order (text input, default 1) \u2022 Shipping (dropdown) \u2022 Item weight (text input \u201c0.3\u201d, unit dropdown \u201ckg\u201d) \u2022 Incoterms (dropdown) \u2022 Checkbox \u201cAllow local pickup\u201d (checked) \u2022 Link \u201cExcluded Countries\u201d \u2022 File-upload/photo area (dashed border). A sticky cookie consent banner is pinned at the bottom of the viewport.",
+  "current_state": "User is logged in and has successfully navigated to the List Inventory form page; the form is fully visible.",
+  "next_action": "wait",
+  "selector": "//*[contains(normalize-space(.), 'List Inventory')]",
+  "action_details": {
+    "value": "",
+    "description": "Wait for the main heading \u201cList Inventory\u201d to be present, confirming the form page has loaded."
+  },
+  "warnings": [
+    "The cookie consent banner at the bottom may cover the photo-upload area; consider closing or accepting cookies before interacting.",
+    "Ensure the date picker dropdown does not obscure other form fields when opened."
+  ],
+  "confidence": "high"
+}

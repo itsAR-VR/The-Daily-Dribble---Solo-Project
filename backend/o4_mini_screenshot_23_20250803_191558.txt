@@ -1,0 +1,50 @@
+Context: I need to fill a form field with the following information:
+Field type: text
+Field name: Quantity
+Value to enter: 10
+
+Please analyze the screenshot and tell me:
+1. Can you see this field?
+2. Is it a dropdown, text input, or autocomplete?
+3. The exact selector to use
+4. Any special steps needed (like clicking to open dropdown first)
+
+Respond in JSON format:
+{
+    "field_visible": true/false,
+    "field_type": "dropdown|text|autocomplete|checkbox|radio",
+    "selector": "exact CSS or XPath",
+    "steps": [
+        {"action": "click|type|select", "selector": "...", "value": "..."}
+    ],
+    "warnings": ["any issues"]
+}
+Analysis: {
+  "field_details": {
+    "field_visible": true,
+    "field_type": "text",
+    "selector": "input[name=\"quantity\"]",
+    "steps": [
+      {
+        "action": "type",
+        "selector": "input[name=\"quantity\"]",
+        "value": "10"
+      }
+    ],
+    "warnings": []
+  },
+  "navigation": {
+    "page_analysis": "You are on the Wholesale Lots \u203a List Inventory page, PHONES & TABLETS tab. The Brand & Model field is filled with \u201cWTS\u201d. All variant dropdowns (Condition, Memory, Color, Market Spec, SIM Lock) are unselected. Carrier is empty. The Price field is blank with a USD currency selector. The Quantity field is empty next to Price. Min. Order is set to 1. Shipping is set to \u201cPacking\u201d, Item weight is 0.3 kg, Incoterms is unselected, and \u201cAllow local pickup\u201d is checked. A cookie consent banner is pinned at the bottom but does not obscure the form.",
+    "current_state": "Logged in as seller, on the \u2018List Inventory\u2019 form, ready to enter Quantity",
+    "next_action": "type",
+    "selector": "input[name=\"quantity\"]",
+    "action_details": {
+      "value": "10",
+      "description": "Enter the desired quantity (10) into the Quantity text field"
+    },
+    "warnings": [
+      "Ensure the cookie banner does not overlap the form when interacting, though it is currently below the form and not blocking inputs."
+    ],
+    "confidence": "high"
+  }
+}

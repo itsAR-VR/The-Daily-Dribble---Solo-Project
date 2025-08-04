@@ -1,0 +1,56 @@
+Context: I need to fill a form field with the following information:
+Field type: dropdown
+Field name: Memory
+Value to enter: 256GB
+
+Please analyze the screenshot and tell me:
+1. Can you see this field?
+2. Is it a dropdown, text input, or autocomplete?
+3. The exact selector to use
+4. Any special steps needed (like clicking to open dropdown first)
+
+Respond in JSON format:
+{
+    "field_visible": true/false,
+    "field_type": "dropdown|text|autocomplete|checkbox|radio",
+    "selector": "exact CSS or XPath",
+    "steps": [
+        {"action": "click|type|select", "selector": "...", "value": "..."}
+    ],
+    "warnings": ["any issues"]
+}
+Analysis: {
+  "field_response": {
+    "field_visible": true,
+    "field_type": "dropdown",
+    "selector": "//select[option[normalize-space(text())='Memory']]",
+    "steps": [
+      {
+        "action": "click",
+        "selector": "//select[option[normalize-space(text())='Memory']]"
+      },
+      {
+        "action": "select",
+        "selector": "//select[option[normalize-space(text())='Memory']]",
+        "value": "256GB"
+      }
+    ],
+    "warnings": [
+      "Ensure the cookie banner at the bottom is not covering the form\u2014close or scroll if needed."
+    ]
+  },
+  "page_response": {
+    "page_analysis": "User is on the Cellpex Network 'List Inventory' page under Wholesale Lots. The breadcrumb reads \u2018\\ Wholesale Lots \\ List Inventory\u2019. The form is visible with: PHONES & TABLETS selected; date picker set to 2025-08-03; 'Brand & Model' text input pre-filled with 'WTS'; a 'Condition' dropdown still at its placeholder; three dropdowns in the next row labeled Memory, Color, Market Spec; below that a SIM Lock dropdown and Carrier text field; then Price (with currency selector), Quantity, Min. Order fields; Shipping dropdown, Item weight inputs, Incoterms dropdown; checkboxes for Multiple rates and Allow local pickup; and a photo upload area. The cookie-consent banner is pinned at the bottom.",
+    "current_state": "Logged in; on the 'List Inventory' form; Memory dropdown is empty and showing its placeholder.",
+    "next_action": "select",
+    "selector": "//select[option[normalize-space(text())='Memory']]",
+    "action_details": {
+      "value": "256GB",
+      "description": "Opens the Memory dropdown and selects '256GB' as the memory size."
+    },
+    "warnings": [
+      "Cookie-consent banner at bottom may overlap page\u2014dismiss or scroll if it blocks interactions."
+    ],
+    "confidence": "high"
+  }
+}

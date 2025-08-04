@@ -1,0 +1,33 @@
+Context: Compare these two screenshots and tell me if the following action was successful:
+Expected result: Field Condition filled with New
+
+Analyze what changed between the screenshots and determine if:
+1. The action completed successfully
+2. Any errors appeared
+3. The page state changed as expected
+
+Respond in JSON format:
+{
+    "success": true/false,
+    "what_changed": "description of changes",
+    "errors_visible": ["any error messages"],
+    "confidence": "high|medium|low"
+}
+Analysis: {
+  "success": false,
+  "what_changed": "The Condition field remains unpopulated and still shows the placeholder 'Condition'; no change detected between screenshots.",
+  "errors_visible": [],
+  "page_analysis": "You are on the Cellpex Network \u201cList Inventory\u201d page under Wholesale Lots. The form is visible with PHONES & TABLETS selected, date set to 2025-08-03, Brand & Model filled with 'WTS', and a Condition dropdown immediately to the right still showing the placeholder 'Condition'. Below are additional dropdowns (Memory, Color, Market Spec, SIM Lock) and text inputs (Carrier, Price, Quantity, Min. Order) plus Shipping, Item weight, Incoterms settings and a cookie-consent banner pinned at the bottom. No error messages are displayed.",
+  "current_state": "User is on the listing form with all previous fields populated except 'Condition', which remains unset.",
+  "next_action": "select",
+  "selector": "select[name=\"condition\"]",
+  "action_details": {
+    "value": "New",
+    "description": "Choose the 'New' option from the Condition dropdown to fulfill the expected result."
+  },
+  "warnings": [
+    "The cookie consent banner at the bottom may overlap elements\u2014dismiss it if necessary before interacting.",
+    "Ensure the dropdown\u2019s options have fully loaded before selecting."
+  ],
+  "confidence": "high"
+}

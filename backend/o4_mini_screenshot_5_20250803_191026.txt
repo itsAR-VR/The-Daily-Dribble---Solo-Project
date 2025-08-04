@@ -1,0 +1,36 @@
+Context: I need to fill a form field with the following information:
+Field type: dropdown
+Field name: Condition
+Value to enter: New
+
+Please analyze the screenshot and tell me:
+1. Can you see this field?
+2. Is it a dropdown, text input, or autocomplete?
+3. The exact selector to use
+4. Any special steps needed (like clicking to open dropdown first)
+
+Respond in JSON format:
+{
+    "field_visible": true/false,
+    "field_type": "dropdown|text|autocomplete|checkbox|radio",
+    "selector": "exact CSS or XPath",
+    "steps": [
+        {"action": "click|type|select", "selector": "...", "value": "..."}
+    ],
+    "warnings": ["any issues"]
+}
+Analysis: {
+  "page_analysis": "You are on the Cellpex Wholesale Network \u201cList Inventory\u201d page (breadcrumb \u201c\\ Wholesale Lots \\ List Inventory\u201d). The form is visible with: a category radio button group (PHONES & TABLETS selected), a date picker set to 2025-08-03, a \u201cBrand & Model\u201d text input (containing \u201cWTS\u201d), and immediately to its right a \u201cCondition\u201d dropdown (showing placeholder \u201cCondition\u201d). Below are other dropdowns (Memory, Color, Market Spec, SIM Lock), text inputs (Carrier, Price, Quantity, Min. Order), Shipping dropdown, Item weight fields, Incoterms dropdown, an \u201cAllow local pickup\u201d checkbox, and a photo upload area. A cookie-consent banner is pinned at the bottom; left navigation and top nav (My Account, Sign Out) are present.",
+  "current_state": "Logged in as a seller, on the List Inventory page, viewing the blank Condition dropdown next to the prefilled Brand & Model field.",
+  "next_action": "select",
+  "selector": "CSS: select#condition",
+  "action_details": {
+    "value": "New",
+    "description": "Open the Condition dropdown and choose the \u201cNew\u201d option"
+  },
+  "warnings": [
+    "If the dropdown has a different id, adjust the selector accordingly (e.g. use XPath).",
+    "Ensure the cookie banner is dismissed or does not overlap the form before interacting."
+  ],
+  "confidence": "high"
+}

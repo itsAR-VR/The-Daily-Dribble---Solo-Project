@@ -1,0 +1,50 @@
+Context: I need to fill a form field with the following information:
+Field type: dropdown
+Field name: Weight Unit
+Value to enter: kg
+
+Please analyze the screenshot and tell me:
+1. Can you see this field?
+2. Is it a dropdown, text input, or autocomplete?
+3. The exact selector to use
+4. Any special steps needed (like clicking to open dropdown first)
+
+Respond in JSON format:
+{
+    "field_visible": true/false,
+    "field_type": "dropdown|text|autocomplete|checkbox|radio",
+    "selector": "exact CSS or XPath",
+    "steps": [
+        {"action": "click|type|select", "selector": "...", "value": "..."}
+    ],
+    "warnings": ["any issues"]
+}
+Analysis: {
+  "field": {
+    "field_visible": true,
+    "field_type": "dropdown",
+    "selector": "xpath=//label[contains(normalize-space(.), 'Item weight')]/following-sibling::*//select[1]",
+    "steps": [
+      {
+        "action": "select",
+        "selector": "xpath=//label[contains(normalize-space(.), 'Item weight')]/following-sibling::*//select[1]",
+        "value": "kg"
+      }
+    ],
+    "warnings": []
+  },
+  "page": {
+    "page_analysis": "You are on the CellPex Network seller 'List Inventory' page under the Smartphones category. The 'List Inventory' form is fully visible. 'PHONES & TABLETS' is selected. Brand & Model is populated with 'WTS'. Condition, Memory, Color, Market Spec, SIM Lock, Carrier, Price, and Quantity are empty. Min. Order is set to 1. In the Shipping row you see: a 'Packing' dropdown, an 'Item weight' input showing '0.3', a unit dropdown currently showing 'kg', and an 'Incoterms' dropdown. 'Allow local pickup' is checked. There are no errors or blocking pop-ups.",
+    "current_state": "Listing form is loaded; item weight value is entered but unit still at default 'kg'.",
+    "next_action": "select",
+    "selector": "xpath=//label[contains(normalize-space(.), 'Item weight')]/following-sibling::*//select[1]",
+    "action_details": {
+      "value": "kg",
+      "description": "Set the item weight unit to kilograms"
+    },
+    "warnings": [
+      "Make sure the form is scrolled so that the Shipping section is in view before interacting."
+    ],
+    "confidence": "high"
+  }
+}

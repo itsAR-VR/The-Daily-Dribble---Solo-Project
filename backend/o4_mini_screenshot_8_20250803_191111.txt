@@ -1,0 +1,33 @@
+Context: Compare these two screenshots and tell me if the following action was successful:
+Expected result: Field Grade filled with A+
+
+Analyze what changed between the screenshots and determine if:
+1. The action completed successfully
+2. Any errors appeared
+3. The page state changed as expected
+
+Respond in JSON format:
+{
+    "success": true/false,
+    "what_changed": "description of changes",
+    "errors_visible": ["any error messages"],
+    "confidence": "high|medium|low"
+}
+Analysis: {
+  "success": false,
+  "what_changed": "No visible change between the two screenshots\u2014there is still no \u201cGrade\u201d (or \u201cField Grade\u201d) input populated with \u201cA+.\u201d The form fields, layout, and data (Brand & Model, Condition placeholder, Memory, Color, etc.) remain identical.",
+  "errors_visible": [],
+  "page_analysis": "You are on the Cellpex Network \u201cList Inventory\u201d page under Wholesale Lots. The form shows: \u2022 Radios for PHONES & TABLETS (selected), ACCESSORIES, GADGETS \u2022 A date picker set to 2025-08-03 \u2022 A \u201cBrand & Model\u201d text field containing \u201cWTS\u201d \u2022 A \u201cCondition\u201d dropdown still showing its placeholder \u2022 Dropdowns for Memory, Color, Market Spec, SIM Lock \u2022 Text inputs for Carrier, Price (with USD selector), Quantity, Min. Order \u2022 Shipping dropdown, Item weight inputs, Incoterms dropdown \u2022 Checkboxes for Multiple rates options and Allow local pickup \u2022 A photo upload zone \u2022 A cookie-consent banner pinned at the bottom \u2022 Left-hand navigation and top nav (\u201cMy Account | Sign Out\u201d) visible",
+  "current_state": "Logged in, on the \u201cList Inventory\u201d form. The Grade field is not in view or not present in the current viewport of the form.",
+  "next_action": "scroll",
+  "selector": "xpath=//label[normalize-space(text())='Grade']/following-sibling::input | css=label:contains('Grade') + input",
+  "action_details": {
+    "value": "",
+    "description": "Scroll down to reveal the \u201cGrade\u201d input field so you can type \u201cA+.\u201d"
+  },
+  "warnings": [
+    "A cookie-consent banner overlaps the bottom of the form\u2014use scroll rather than click/tap at the bottom of the viewport.",
+    "The Grade field may be hidden or rendered dynamically; ensure the form has fully loaded."
+  ],
+  "confidence": "high"
+}

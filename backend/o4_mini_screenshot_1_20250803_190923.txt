@@ -1,0 +1,16 @@
+Context: Find and click the 'Sell Inventory' button
+Analysis: {
+  "page_analysis": "The screen shows the Cellpex Wholesale Network dashboard. At the top is a header bar with a search input labeled \u201cSmartphones\u201d and, to its right, a dropdown showing the current category (\u201cSmartphones\u201d). Farther right in that header is a prominent blue button labeled \u201cSell Inventory.\u201d On the left side is a vertical navigation menu under \u201cSellers\u201d that also contains a text link called \u201cSell Inventory,\u201d but that is styled as a simple list link. The central panel shows \u201cMy Summary\u201d information, trade voices, industry news, etc. A cookie consent banner is pinned to the bottom of the viewport.",
+  "current_state": "User is logged in and on the dashboard/home page after signing in; no sell-inventory form is currently visible.",
+  "next_action": "click",
+  "selector": "//button[normalize-space(text()) = 'Sell Inventory']",
+  "action_details": {
+    "value": "",
+    "description": "Click the main blue \u2018Sell Inventory\u2019 button in the top header to open the inventory listing form."
+  },
+  "warnings": [
+    "Make sure to target the header button (XPath above) and not the left-nav text link of the same name.",
+    "Verify the cookie banner at the bottom does not intercept any clicks."
+  ],
+  "confidence": "high"
+}

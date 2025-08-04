@@ -1,0 +1,39 @@
+Context: I need to fill a form field with the following information:
+Field type: dropdown
+Field name: Grade
+Value to enter: A+
+
+Please analyze the screenshot and tell me:
+1. Can you see this field?
+2. Is it a dropdown, text input, or autocomplete?
+3. The exact selector to use
+4. Any special steps needed (like clicking to open dropdown first)
+
+Respond in JSON format:
+{
+    "field_visible": true/false,
+    "field_type": "dropdown|text|autocomplete|checkbox|radio",
+    "selector": "exact CSS or XPath",
+    "steps": [
+        {"action": "click|type|select", "selector": "...", "value": "..."}
+    ],
+    "warnings": ["any issues"]
+}
+Analysis: {
+  "field_visible": false,
+  "field_type": null,
+  "selector": null,
+  "steps": [],
+  "warnings": [
+    "Ensure the cookie banner is dismissed or scrolled past so you can see all form fields."
+  ],
+  "page_analysis": "You are on the Cellpex Wholesale Network \u201cList Inventory\u201d page (breadcrumb \u201c\\ Wholesale Lots \\ List Inventory\u201d). The form is visible with the category radio buttons (PHONES & TABLETS selected), date picker set to 2025-08-03, Brand & Model filled with \u201cWTS\u201d, and dropdowns for Condition, Memory, Color, Market Spec, SIM Lock. Below are text fields for Carrier, Price, Quantity, Min. Order, Shipping dropdown, Item weight, Incoterms dropdown, and options for multiple rates and local pickup. The cookie-consent banner is pinned at the bottom, obscuring any lower form fields.",
+  "current_state": "Logged in, on the \u201cList Inventory\u201d form. The Grade field is not currently in view.",
+  "next_action": "scroll",
+  "selector_for_scroll": "window.scrollTo(0, document.body.scrollHeight)",
+  "action_details": {
+    "value": "",
+    "description": "Scroll to the bottom of the form to reveal any additional fields (e.g., Grade) that may be hidden below."
+  },
+  "confidence": "high"
+}

@@ -1,0 +1,33 @@
+Context: Compare these two screenshots and tell me if the following action was successful:
+Expected result: Field Carrier filled with 
+
+Analyze what changed between the screenshots and determine if:
+1. The action completed successfully
+2. Any errors appeared
+3. The page state changed as expected
+
+Respond in JSON format:
+{
+    "success": true/false,
+    "what_changed": "description of changes",
+    "errors_visible": ["any error messages"],
+    "confidence": "high|medium|low"
+}
+Analysis: {
+  "success": false,
+  "what_changed": "No change detected: the Carrier input remains empty in the second screenshot.",
+  "errors_visible": [],
+  "confidence": "high",
+  "page_analysis": "You\u2019re on the \u201cWholesale Lots \u203a List Inventory\u201d page with the \u201cPHONES & TABLETS\u201d tab selected. The Brand & Model field is filled with \u201cWTS\u201d. There are dropdowns for Condition, Memory, Color, Market Spec, and SIM Lock. The Carrier text input shows its placeholder but is still empty. Below are Price (with USD selector), Quantity, Min. Order (1), Shipping (Packing), Item weight (0.3 kg), Incoterms, an Allow local pickup checkbox (checked), and a photo drop area. A cookie consent banner is pinned at the bottom but does not overlap the form.",
+  "current_state": "Seller is logged in, on the listing form; the Carrier field was not populated by the previous automation step.",
+  "next_action": "type",
+  "selector": "css=input[placeholder=\"Carrier\"]",
+  "action_details": {
+    "value": "AT&T",
+    "description": "Enter the carrier name into the Carrier field."
+  },
+  "warnings": [
+    "Make sure the Brand & Model autocomplete has fully settled before typing into Carrier, or the field may lose focus.",
+    "Verify that no other script is clearing the field immediately after input."
+  ]
+}
