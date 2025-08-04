@@ -27,7 +27,7 @@ except ImportError:
 
 # Import the main script
 try:
-    from multi_platform_listing_bot import run_from_spreadsheet
+    from backend.multi_platform_listing_bot import run_from_spreadsheet
 except ImportError:
     # Create a dummy function if import fails
     def run_from_spreadsheet(input_path: str, output_path: str) -> None:
@@ -40,7 +40,7 @@ gmail_import_error = None
 
 try:
     print("📦 Attempting to import Gmail service...")
-    from gmail_service import gmail_service
+    from backend.gmail_service import gmail_service
     print("✅ Gmail service module imported successfully")
     # Gmail service is available if imported successfully, regardless of auth status
     GMAIL_AVAILABLE = True
@@ -63,7 +63,7 @@ except Exception as e:
 # Test Chrome availability on startup
 CHROME_AVAILABLE = True
 try:
-    from multi_platform_listing_bot import create_driver
+    from backend.multi_platform_listing_bot import create_driver
     test_driver = create_driver()
     test_driver.quit()
     print("✅ Chrome driver test successful")
@@ -1184,7 +1184,7 @@ async def test_enhanced_cellpex_2fa():
     """Test enhanced Cellpex 2FA flow in production"""
     try:
         # Import here to avoid circular imports
-        from enhanced_platform_poster import EnhancedCellpexPoster
+        from backend.enhanced_platform_poster import EnhancedCellpexPoster
         from selenium import webdriver
         
         # Setup Chrome options for production

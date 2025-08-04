@@ -14,7 +14,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 # Import Gmail service for 2FA
 try:
-    from gmail_service import gmail_service
+    from backend.gmail_service import gmail_service
     GMAIL_AVAILABLE = gmail_service and gmail_service.is_available()
 except:
     GMAIL_AVAILABLE = False

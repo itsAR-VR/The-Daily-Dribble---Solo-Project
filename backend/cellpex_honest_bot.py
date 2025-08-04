@@ -19,9 +19,9 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from dotenv import load_dotenv
 
 # Import our honest components
-from anti_hallucination_validator import AntiHallucinationValidator
-from o4_mini_high_navigator import O4MiniHighVisionNavigator
-from gmail_service import GmailService
+from backend.anti_hallucination_validator import AntiHallucinationValidator
+from backend.o4_mini_high_navigator import O4MiniHighVisionNavigator
+from backend.gmail_service import GmailService
 
 # Load environment variables
 load_dotenv()
@@ -507,9 +507,9 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from dotenv import load_dotenv
 
 # Import our honest components
-from anti_hallucination_validator import AntiHallucinationValidator
-from o4_mini_high_navigator import O4MiniHighVisionNavigator
-from gmail_service import GmailService
+from backend.anti_hallucination_validator import AntiHallucinationValidator
+from backend.o4_mini_high_navigator import O4MiniHighVisionNavigator
+from backend.gmail_service import GmailService
 
 # Load environment variables
 load_dotenv()
