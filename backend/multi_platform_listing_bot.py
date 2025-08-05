@@ -351,19 +351,35 @@ def create_driver() -> webdriver.Chrome:
                     chromedriver_path = path
                     break
         
-        # Always use explicit service to avoid Selenium Manager issues
+        # Try different approaches to create Chrome driver
+        driver = None
+        
+        # Approach 1: Use explicit ChromeDriver path if it exists
         if chromedriver_path and os.path.exists(chromedriver_path):
-            print(f"Using ChromeDriver at: {chromedriver_path}")
-            service = Service(executable_path=chromedriver_path)
-            driver = webdriver.Chrome(service=service, options=options)
-        else:
-            # If path not found but env var is set, use it anyway
-            chromedriver_path = chromedriver_path or "/usr/local/bin/chromedriver"
-            print(f"Forcing ChromeDriver path: {chromedriver_path}")
-            service = Service(executable_path=chromedriver_path)
-            driver = webdriver.Chrome(service=service, options=options)
-            
-        return driver
+            try:
+                print(f"Using ChromeDriver at: {chromedriver_path}")
+                service = Service(executable_path=chromedriver_path)
+                driver = webdriver.Chrome(service=service, options=options)
+                print("✅ Chrome driver created with explicit path")
+                return driver
+            except Exception as e:
+                print(f"Failed with explicit path: {e}")
+        
+        # Approach 2: Let Selenium Manager handle it
+        if not driver:
+            try:
+                print("Trying Selenium Manager (default)...")
+                # Remove the skip flags temporarily
+                os.environ.pop('SE_SKIP_DRIVER_DOWNLOAD', None)
+                os.environ.pop('WDM_SKIP_DRIVER_DOWNLOAD', None)
+                driver = webdriver.Chrome(options=options)
+                print("✅ Chrome driver created with Selenium Manager")
+                return driver
+            except Exception as e:
+                print(f"Failed with Selenium Manager: {e}")
+        
+        # If all approaches fail, raise the error
+        raise Exception("Could not create Chrome driver with any method")
     except Exception as e:
         # More detailed error information
         print(f"Chrome driver creation error: {e}")
