@@ -326,14 +326,28 @@ def create_driver() -> webdriver.Chrome:
     options.add_experimental_option("useAutomationExtension", False)
     
     try:
-        # Selenium 4.6+ automatically manages ChromeDriver
-        print("Creating Chrome driver with Selenium Manager...")
-        print(f"Chrome binary: {getattr(options, 'binary_location', 'Default')}")
-        print(f"Environment: {'Railway' if os.getenv('RAILWAY_ENVIRONMENT') else 'Local'}")
+        # Check if we should use remote Selenium Grid
+        selenium_remote_url = os.getenv("SELENIUM_REMOTE_URL")
         
-        # Create driver - Selenium will automatically download ChromeDriver if needed
-        driver = webdriver.Chrome(options=options)
-        print("✅ Chrome driver created successfully")
+        if selenium_remote_url:
+            # Use remote Selenium Grid (e.g., standalone-chrome container)
+            print(f"Using remote Selenium at: {selenium_remote_url}")
+            from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+            
+            driver = webdriver.Remote(
+                command_executor=selenium_remote_url,
+                desired_capabilities=DesiredCapabilities.CHROME,
+                options=options
+            )
+            print("✅ Remote Chrome driver created successfully")
+        else:
+            # Use local Chrome with Selenium Manager
+            print("Creating local Chrome driver with Selenium Manager...")
+            print(f"Chrome binary: {getattr(options, 'binary_location', 'Default')}")
+            print(f"Environment: {'Railway' if os.getenv('RAILWAY_ENVIRONMENT') else 'Local'}")
+            
+            driver = webdriver.Chrome(options=options)
+            print("✅ Local Chrome driver created successfully")
         
         return driver
     except Exception as e:

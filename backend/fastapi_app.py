@@ -63,26 +63,32 @@ except Exception as e:
 # Test Chrome availability on startup (non-blocking)
 CHROME_AVAILABLE = False
 chrome_test_error = "Not tested yet"
-print("🔍 Chrome driver will be tested on first use (Selenium Manager will handle ChromeDriver)")
+print("🔍 Chrome driver configuration:")
 print(f"CHROME_BIN env: {os.getenv('CHROME_BIN', 'Not set')}")
+print(f"SELENIUM_REMOTE_URL: {os.getenv('SELENIUM_REMOTE_URL', 'Not set')}")
 print(f"Railway environment: {'Yes' if os.getenv('RAILWAY_ENVIRONMENT') else 'No'}")
 
-# Check if Chrome binary exists
-import subprocess
-try:
-    result = subprocess.run(["which", "google-chrome-stable"], capture_output=True, text=True)
-    if result.returncode == 0:
-        print(f"✅ Chrome found at: {result.stdout.strip()}")
-        CHROME_AVAILABLE = True
-    else:
-        result = subprocess.run(["which", "google-chrome"], capture_output=True, text=True)
+# Check for remote Selenium first
+if os.getenv("SELENIUM_REMOTE_URL"):
+    print("✅ Using remote Selenium Grid")
+    CHROME_AVAILABLE = True
+else:
+    # Check if Chrome binary exists locally
+    import subprocess
+    try:
+        result = subprocess.run(["which", "google-chrome-stable"], capture_output=True, text=True)
         if result.returncode == 0:
             print(f"✅ Chrome found at: {result.stdout.strip()}")
             CHROME_AVAILABLE = True
         else:
-            print("❌ Chrome not found in PATH")
-except Exception as e:
-    print(f"❌ Error checking for Chrome: {e}")
+            result = subprocess.run(["which", "google-chrome"], capture_output=True, text=True)
+            if result.returncode == 0:
+                print(f"✅ Chrome found at: {result.stdout.strip()}")
+                CHROME_AVAILABLE = True
+            else:
+                print("❌ Chrome not found in PATH")
+    except Exception as e:
+        print(f"❌ Error checking for Chrome: {e}")
     
     # Create a fallback function
     def run_from_spreadsheet_fallback(input_path: str, output_path: str) -> None:

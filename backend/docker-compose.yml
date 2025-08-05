@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  app:
+    build: 
+      context: .
+      dockerfile: Dockerfile.railway
+    ports:
+      - "8000:8000"
+    environment:
+      - CHROME_BIN=/usr/bin/google-chrome-stable
+      - CHROME_USER_DATA_DIR=/tmp/.chrome
+      - SELENIUM_REMOTE_URL=http://chrome:4444/wd/hub
+    depends_on:
+      - chrome
+    networks:
+      - selenium-network
+
+  chrome:
+    image: selenium/standalone-chrome:latest
+    ports:
+      - "4444:4444"
+      - "7900:7900"  # VNC server for debugging
+    shm_size: '2gb'
+    environment:
+      - SE_NODE_MAX_INSTANCES=1
+      - SE_NODE_MAX_SESSIONS=1
+      - SE_SCREEN_WIDTH=1920
+      - SE_SCREEN_HEIGHT=1080
+    networks:
+      - selenium-network
+
+networks:
+  selenium-network:
+    driver: bridge
