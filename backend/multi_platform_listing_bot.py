@@ -310,6 +310,10 @@ def create_driver() -> webdriver.Chrome:
     options.add_argument("--disable-features=TranslateUI")
     options.add_argument("--disable-ipc-flooding-protection")
     
+    # Set user data directory for non-root environments
+    user_data_dir = os.getenv("CHROME_USER_DATA_DIR", "/tmp/.chrome")
+    options.add_argument(f"--user-data-dir={user_data_dir}")
+    
     # Set Chrome binary location if specified
     chrome_binary = os.getenv("CHROME_BIN") or os.getenv("CHROME_PATH")
     if chrome_binary:
@@ -323,23 +327,28 @@ def create_driver() -> webdriver.Chrome:
         # Try to create driver with Service for better error handling
         from selenium.webdriver.chrome.service import Service
         
-        # Try to find chromedriver - check environment variable first
-        chromedriver_path = os.getenv("CHROMEDRIVER_PATH")
+        # Try to find chromedriver - check environment variables first
+        chromedriver_path = os.getenv("CHROMEDRIVER_PATH") or os.getenv("SE_CHROMEDRIVER_PATH")
         
         if not chromedriver_path:
             # Fallback to common locations
-            for path in ["/usr/local/bin/chromedriver", "/usr/bin/chromedriver", "chromedriver"]:
+            for path in ["/usr/local/bin/chromedriver", "/usr/bin/chromedriver"]:
                 if os.path.exists(path):
                     chromedriver_path = path
                     break
         
+        # Always use explicit service to avoid Selenium Manager issues
         if chromedriver_path and os.path.exists(chromedriver_path):
             print(f"Using ChromeDriver at: {chromedriver_path}")
-            service = Service(chromedriver_path)
+            service = Service(executable_path=chromedriver_path)
+            # Disable build check to avoid version mismatch issues
+            service._disable_build_check = True
             driver = webdriver.Chrome(service=service, options=options)
         else:
-            print("No ChromeDriver path found, letting Selenium handle it")
-            driver = webdriver.Chrome(options=options)
+            # Force use of system chromedriver
+            print("Warning: ChromeDriver path not found, using system chromedriver")
+            service = Service(executable_path="chromedriver")
+            driver = webdriver.Chrome(service=service, options=options)
             
         return driver
     except Exception as e:
