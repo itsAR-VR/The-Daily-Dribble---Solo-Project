@@ -296,7 +296,8 @@ def create_driver() -> webdriver.Chrome:
     options = webdriver.ChromeOptions()
     
     # Add headless mode for deployment environments
-    options.add_argument("--headless")
+    if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RENDER") or os.getenv("CHROME_BIN"):
+        options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
@@ -309,14 +310,14 @@ def create_driver() -> webdriver.Chrome:
     options.add_argument("--disable-features=TranslateUI")
     options.add_argument("--disable-ipc-flooding-protection")
     
+    # Set Chrome binary location if specified
+    chrome_binary = os.getenv("CHROME_BIN") or os.getenv("CHROME_PATH")
+    if chrome_binary:
+        options.binary_location = chrome_binary
+    
     # Disable automation detection
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
-    
-    # Set chrome binary location if available
-    chrome_path = os.environ.get("CHROME_BIN") or os.environ.get("CHROME_PATH")
-    if chrome_path:
-        options.binary_location = chrome_path
     
     try:
         # Try to create driver with Service for better error handling
