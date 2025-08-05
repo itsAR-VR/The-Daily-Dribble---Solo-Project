@@ -1,7 +1,7 @@
 # Railway-optimized Dockerfile for Anti-Hallucination Bot
 FROM python:3.11-slim
 
-# Install dependencies for Chrome
+# Install dependencies for Chrome and ChromeDriver
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
@@ -30,6 +30,36 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     libu2f-udev \
     libvulkan1 \
+    # Additional dependencies for ChromeDriver
+    libglib2.0-0 \
+    libnss3-dev \
+    libgdk-pixbuf2.0-0 \
+    libgtk-3-0 \
+    libxss1 \
+    libgconf-2-4 \
+    libxtst6 \
+    libappindicator3-1 \
+    libasound2 \
+    libatk1.0-0 \
+    libc6 \
+    libcairo2 \
+    libcups2 \
+    libexpat1 \
+    libfontconfig1 \
+    libgcc1 \
+    libgdk-pixbuf2.0-0 \
+    libnspr4 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libstdc++6 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcursor1 \
+    libxi6 \
+    libxrender1 \
+    libxtst6 \
+    lsb-release \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Google Chrome
@@ -74,18 +104,23 @@ RUN useradd -m -u 1000 botuser && chown -R botuser:botuser /app
 # Set Chrome options for non-root user
 ENV CHROME_USER_DATA_DIR=/tmp/.chrome
 
-# Create Selenium cache directory with proper permissions
+# Create Selenium cache directory with proper permissions for both root and botuser
 RUN mkdir -p /home/botuser/.cache/selenium && \
-    chown -R botuser:botuser /home/botuser/.cache && \
+    mkdir -p /root/.cache/selenium && \
+    chmod -R 777 /root/.cache && \
+    chmod -R 777 /home/botuser/.cache && \
     chmod 755 /usr/bin/google-chrome-stable || true
 
-USER botuser
+# Stay as root for now to avoid permission issues
+# USER botuser
 
 # Enable Selenium Manager to download ChromeDriver automatically
 ENV SE_DRIVER_TIMEOUT_MS=300000
+ENV HOME=/root
 
 # Expose port (Railway sets PORT env var)
 EXPOSE 8000
 
 # Start FastAPI with anti-hallucination bot
 CMD ["python", "-m", "uvicorn", "fastapi_app:app", "--host", "0.0.0.0", "--port", "8000"]
+

@@ -1505,6 +1505,73 @@ async def test_chrome_status():
     return result
 
 
+@app.post("/debug/chromedriver-deps")
+async def debug_chromedriver_deps():
+    """Check ChromeDriver dependencies"""
+    import subprocess
+    import platform
+    
+    result = {
+        "chromedriver_found": False,
+        "chromedriver_path": None,
+        "chromedriver_version": None,
+        "exit_code": None,
+        "missing_libs": [],
+        "ldd_output": None,
+        "chrome_version": None
+    }
+    
+    # Find ChromeDriver in Selenium cache
+    selenium_cache = os.path.expanduser("~/.cache/selenium")
+    chromedriver_path = None
+    
+    if os.path.exists(selenium_cache):
+        for root, dirs, files in os.walk(selenium_cache):
+            for file in files:
+                if file == "chromedriver":
+                    chromedriver_path = os.path.join(root, file)
+                    result["chromedriver_found"] = True
+                    result["chromedriver_path"] = chromedriver_path
+                    break
+    
+    if chromedriver_path:
+        # Make it executable
+        os.chmod(chromedriver_path, 0o755)
+        
+        # Try to run it
+        try:
+            proc = subprocess.run([chromedriver_path, "--version"], 
+                                 capture_output=True, text=True)
+            result["exit_code"] = proc.returncode
+            if proc.returncode == 0:
+                result["chromedriver_version"] = proc.stdout.strip()
+            else:
+                # Check dependencies
+                if platform.system() == "Linux":
+                    ldd_result = subprocess.run(["ldd", chromedriver_path], 
+                                              capture_output=True, text=True)
+                    result["ldd_output"] = ldd_result.stdout
+                    if "not found" in ldd_result.stdout:
+                        missing_libs = [line.strip() for line in ldd_result.stdout.split('\n') 
+                                       if "not found" in line]
+                        result["missing_libs"] = missing_libs
+        except Exception as e:
+            result["error"] = str(e)
+    
+    # Check Chrome
+    for chrome_cmd in ["google-chrome", "google-chrome-stable"]:
+        try:
+            proc = subprocess.run([chrome_cmd, "--version"], 
+                                 capture_output=True, text=True)
+            if proc.returncode == 0:
+                result["chrome_version"] = proc.stdout.strip()
+                break
+        except:
+            pass
+    
+    return result
+
+
 @app.post("/debug/test-chrome")
 async def debug_test_chrome(request: dict):
     """Test Chrome driver creation with verbose output"""
