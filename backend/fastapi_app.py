@@ -60,33 +60,29 @@ except Exception as e:
     GMAIL_AVAILABLE = False
     gmail_service = None
 
-# Test Chrome availability on startup
-CHROME_AVAILABLE = True
-chrome_test_error = None
+# Test Chrome availability on startup (non-blocking)
+CHROME_AVAILABLE = False
+chrome_test_error = "Not tested yet"
+print("🔍 Chrome driver will be tested on first use (Selenium Manager will handle ChromeDriver)")
+print(f"CHROME_BIN env: {os.getenv('CHROME_BIN', 'Not set')}")
+print(f"Railway environment: {'Yes' if os.getenv('RAILWAY_ENVIRONMENT') else 'No'}")
+
+# Check if Chrome binary exists
+import subprocess
 try:
-    from backend.multi_platform_listing_bot import create_driver
-    print("🔍 Testing Chrome driver creation...")
-    print(f"CHROME_BIN: {os.getenv('CHROME_BIN')}")
-    print(f"CHROMEDRIVER_PATH: {os.getenv('CHROMEDRIVER_PATH')}")
-    test_driver = create_driver()
-    test_driver.quit()
-    print("✅ Chrome driver test successful")
-except Exception as e:
-    CHROME_AVAILABLE = False
-    chrome_test_error = str(e)
-    print(f"❌ Chrome driver test failed: {e}")
-    print(f"Chrome binary location: {os.getenv('CHROME_BIN')}")
-    print(f"PATH: {os.getenv('PATH')}")
-    
-    # Try to find Chrome
-    import subprocess
-    try:
+    result = subprocess.run(["which", "google-chrome-stable"], capture_output=True, text=True)
+    if result.returncode == 0:
+        print(f"✅ Chrome found at: {result.stdout.strip()}")
+        CHROME_AVAILABLE = True
+    else:
         result = subprocess.run(["which", "google-chrome"], capture_output=True, text=True)
-        print(f"Chrome location: {result.stdout.strip()}")
-        result = subprocess.run(["which", "chromedriver"], capture_output=True, text=True)
-        print(f"ChromeDriver location: {result.stdout.strip()}")
-    except:
-        pass
+        if result.returncode == 0:
+            print(f"✅ Chrome found at: {result.stdout.strip()}")
+            CHROME_AVAILABLE = True
+        else:
+            print("❌ Chrome not found in PATH")
+except Exception as e:
+    print(f"❌ Error checking for Chrome: {e}")
     
     # Create a fallback function
     def run_from_spreadsheet_fallback(input_path: str, output_path: str) -> None:
@@ -1548,18 +1544,11 @@ async def debug_test_chrome(request: dict):
                 logs.append(f"Set Chrome binary location: {chrome_bin}")
         
         # Try to create driver
-        # Force disable Selenium Manager
-        os.environ['SE_SKIP_DRIVER_DOWNLOAD'] = '1'
-        
-        if not chromedriver_path:
-            chromedriver_path = "/usr/local/bin/chromedriver"
-            
         if verbose:
-            logs.append(f"Using ChromeDriver at: {chromedriver_path}")
-            logs.append(f"ChromeDriver exists: {os.path.exists(chromedriver_path)}")
+            logs.append("Using Selenium Manager for ChromeDriver")
             
-        service = Service(executable_path=chromedriver_path)
-        driver = webdriver.Chrome(service=service, options=options)
+        # Let Selenium Manager handle ChromeDriver
+        driver = webdriver.Chrome(options=options)
         
         if verbose:
             logs.append("Chrome driver created successfully!")

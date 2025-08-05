@@ -1,12 +1,13 @@
 # Railway-optimized Dockerfile for Anti-Hallucination Bot
 FROM python:3.11-slim
 
-# Install Chrome and dependencies with proper setup
+# Install dependencies for Chrome
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
     gnupg \
     unzip \
+    ca-certificates \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -17,41 +18,35 @@ RUN apt-get update && apt-get install -y \
     libdrm2 \
     libgbm1 \
     libgtk-3-0 \
+    libgtk-4-1 \
     libnspr4 \
     libnss3 \
+    libwayland-client0 \
     libxcomposite1 \
     libxdamage1 \
     libxfixes3 \
     libxkbcommon0 \
     libxrandr2 \
     xdg-utils \
+    libu2f-udev \
+    libvulkan1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chrome browser and ChromeDriver
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google.list \
+# Install Google Chrome
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/googlechrome-linux-keyring.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/googlechrome-linux-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
     && apt-get install -y google-chrome-stable \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && google-chrome --version
 
-# Install ChromeDriver - simplified approach
-RUN CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d'.' -f1) \
-    && echo "Chrome major version: ${CHROME_VERSION}" \
-    && wget -q "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION}" -O /tmp/chromedriver_version || \
-       wget -q "https://chromedriver.storage.googleapis.com/LATEST_RELEASE" -O /tmp/chromedriver_version \
-    && CHROMEDRIVER_VERSION=$(cat /tmp/chromedriver_version) \
-    && echo "ChromeDriver version: ${CHROMEDRIVER_VERSION}" \
-    && wget -q "https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip" -O /tmp/chromedriver.zip \
-    && unzip -q /tmp/chromedriver.zip -d /tmp/ \
-    && mv /tmp/chromedriver /usr/local/bin/chromedriver \
-    && chmod +x /usr/local/bin/chromedriver \
-    && rm -rf /tmp/chromedriver.zip /tmp/chromedriver_version \
-    && /usr/local/bin/chromedriver --version || echo "ChromeDriver installation may have issues"
+# Note: We're NOT installing ChromeDriver manually
+# Selenium 4.6+ will automatically download the correct version
 
 # Set Chrome environment variables
 ENV CHROME_BIN=/usr/bin/google-chrome-stable
 ENV CHROME_PATH=/usr/bin/google-chrome-stable
-ENV CHROMEDRIVER_PATH=/usr/local/bin/chromedriver
+ENV GOOGLE_CHROME_BIN=/usr/bin/google-chrome-stable
 
 # Set working directory
 WORKDIR /app
@@ -65,27 +60,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend application code
 COPY backend/ .
 
-# Verify Chrome and ChromeDriver installation
+# Verify Chrome installation
 RUN google-chrome --version && \
-    /usr/local/bin/chromedriver --version && \
-    echo "Chrome and ChromeDriver installed successfully"
-
-# Make ChromeDriver accessible to all users and fix dependencies
-RUN chmod 755 /usr/local/bin/chromedriver && \
-    # Test ChromeDriver can execute
-    /usr/local/bin/chromedriver --version || echo "ChromeDriver test failed"
+    echo "Chrome installed successfully"
 
 # Create directory for Chrome user data and Selenium cache
 RUN mkdir -p /tmp/.chrome && chmod 777 /tmp/.chrome && \
     mkdir -p /root/.cache/selenium && chmod 777 /root/.cache/selenium
-
-# Install missing dependencies for ChromeDriver
-RUN apt-get update && apt-get install -y \
-    libnss3 \
-    libgconf-2-4 \
-    libxi6 \
-    libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN useradd -m -u 1000 botuser && chown -R botuser:botuser /app
@@ -95,21 +76,13 @@ ENV CHROME_USER_DATA_DIR=/tmp/.chrome
 
 # Create Selenium cache directory with proper permissions
 RUN mkdir -p /home/botuser/.cache/selenium && \
-    chown -R botuser:botuser /home/botuser/.cache
-
-# Ensure ChromeDriver is executable by all
-RUN chmod 755 /usr/local/bin/chromedriver && \
+    chown -R botuser:botuser /home/botuser/.cache && \
     chmod 755 /usr/bin/google-chrome-stable || true
-
-# Create a symlink for chromedriver in PATH
-RUN ln -sf /usr/local/bin/chromedriver /usr/bin/chromedriver || true
 
 USER botuser
 
-# Pre-configure Selenium to use our ChromeDriver
-ENV SE_CHROMEDRIVER_PATH=/usr/local/bin/chromedriver
-ENV WDM_SKIP_DRIVER_DOWNLOAD=1
-ENV SE_SKIP_DRIVER_DOWNLOAD=1
+# Enable Selenium Manager to download ChromeDriver automatically
+ENV SE_DRIVER_TIMEOUT_MS=300000
 
 # Expose port (Railway sets PORT env var)
 EXPOSE 8000

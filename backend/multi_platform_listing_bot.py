@@ -295,95 +295,51 @@ POSTER_MAP: Dict[str, Type[MarketplacePoster]] = {
 def create_driver() -> webdriver.Chrome:
     options = webdriver.ChromeOptions()
     
-    # Add headless mode for deployment environments
-    if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RENDER") or os.getenv("CHROME_BIN"):
-        options.add_argument("--headless")
+    # Essential arguments for containerized environments
+    options.add_argument("--headless=new")  # Use new headless mode
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1920x1080")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-background-timer-throttling")
-    options.add_argument("--disable-backgrounding-occluded-windows")
-    options.add_argument("--disable-renderer-backgrounding")
-    options.add_argument("--disable-features=TranslateUI")
-    options.add_argument("--disable-ipc-flooding-protection")
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--window-size=1920,1080")
     
-    # Set user data directory for non-root environments
+    # Additional stability arguments
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--disable-setuid-sandbox")
+    options.add_argument("--single-process")  # Important for containers
+    options.add_argument("--disable-web-security")
+    options.add_argument("--disable-features=VizDisplayCompositor")
+    
+    # Set user data directory
     user_data_dir = os.getenv("CHROME_USER_DATA_DIR", "/tmp/.chrome")
     options.add_argument(f"--user-data-dir={user_data_dir}")
     
     # Set Chrome binary location if specified
-    chrome_binary = os.getenv("CHROME_BIN") or os.getenv("CHROME_PATH")
-    if chrome_binary:
+    chrome_binary = os.getenv("CHROME_BIN", "/usr/bin/google-chrome-stable")
+    if chrome_binary and os.path.exists(chrome_binary):
         options.binary_location = chrome_binary
+        print(f"Using Chrome binary at: {chrome_binary}")
     
     # Disable automation detection
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
     
     try:
-        # Try to create driver with Service for better error handling
-        from selenium.webdriver.chrome.service import Service
-        import shutil
+        # Selenium 4.6+ automatically manages ChromeDriver
+        print("Creating Chrome driver with Selenium Manager...")
+        print(f"Chrome binary: {getattr(options, 'binary_location', 'Default')}")
+        print(f"Environment: {'Railway' if os.getenv('RAILWAY_ENVIRONMENT') else 'Local'}")
         
-        # Clear Selenium's cache to prevent using wrong ChromeDriver
-        selenium_cache = os.path.expanduser("~/.cache/selenium")
-        if os.path.exists(selenium_cache):
-            try:
-                shutil.rmtree(selenium_cache)
-                print(f"Cleared Selenium cache at {selenium_cache}")
-            except:
-                pass
+        # Create driver - Selenium will automatically download ChromeDriver if needed
+        driver = webdriver.Chrome(options=options)
+        print("✅ Chrome driver created successfully")
         
-        # Force disable Selenium Manager
-        os.environ['SE_SKIP_DRIVER_DOWNLOAD'] = '1'
-        os.environ['WDM_SKIP_DRIVER_DOWNLOAD'] = '1'
-        
-        # Try to find chromedriver - check environment variables first
-        chromedriver_path = os.getenv("CHROMEDRIVER_PATH") or os.getenv("SE_CHROMEDRIVER_PATH")
-        
-        if not chromedriver_path:
-            # Fallback to common locations
-            for path in ["/usr/local/bin/chromedriver", "/usr/bin/chromedriver"]:
-                if os.path.exists(path):
-                    chromedriver_path = path
-                    break
-        
-        # Try different approaches to create Chrome driver
-        driver = None
-        
-        # Approach 1: Use explicit ChromeDriver path if it exists
-        if chromedriver_path and os.path.exists(chromedriver_path):
-            try:
-                print(f"Using ChromeDriver at: {chromedriver_path}")
-                service = Service(executable_path=chromedriver_path)
-                driver = webdriver.Chrome(service=service, options=options)
-                print("✅ Chrome driver created with explicit path")
-                return driver
-            except Exception as e:
-                print(f"Failed with explicit path: {e}")
-        
-        # Approach 2: Let Selenium Manager handle it
-        if not driver:
-            try:
-                print("Trying Selenium Manager (default)...")
-                # Remove the skip flags temporarily
-                os.environ.pop('SE_SKIP_DRIVER_DOWNLOAD', None)
-                os.environ.pop('WDM_SKIP_DRIVER_DOWNLOAD', None)
-                driver = webdriver.Chrome(options=options)
-                print("✅ Chrome driver created with Selenium Manager")
-                return driver
-            except Exception as e:
-                print(f"Failed with Selenium Manager: {e}")
-        
-        # If all approaches fail, raise the error
-        raise Exception("Could not create Chrome driver with any method")
+        return driver
     except Exception as e:
         # More detailed error information
         print(f"Chrome driver creation error: {e}")
-        print(f"Chrome binary location: {chrome_path}")
+        print(f"Chrome binary location: {getattr(options, 'binary_location', 'Not set')}")
         print(f"PATH: {os.environ.get('PATH', 'Not set')}")
         
         # Check if chrome and chromedriver exist
