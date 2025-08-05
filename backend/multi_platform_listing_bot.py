@@ -323,18 +323,23 @@ def create_driver() -> webdriver.Chrome:
         # Try to create driver with Service for better error handling
         from selenium.webdriver.chrome.service import Service
         
-        # Try to find chromedriver
-        chromedriver_path = None
-        for path in ["/usr/local/bin/chromedriver", "/usr/bin/chromedriver", "chromedriver"]:
-            if os.path.exists(path) or path == "chromedriver":
-                chromedriver_path = path
-                break
+        # Try to find chromedriver - check environment variable first
+        chromedriver_path = os.getenv("CHROMEDRIVER_PATH")
         
-        if chromedriver_path:
+        if not chromedriver_path:
+            # Fallback to common locations
+            for path in ["/usr/local/bin/chromedriver", "/usr/bin/chromedriver", "chromedriver"]:
+                if os.path.exists(path):
+                    chromedriver_path = path
+                    break
+        
+        if chromedriver_path and os.path.exists(chromedriver_path):
+            print(f"Using ChromeDriver at: {chromedriver_path}")
             service = Service(chromedriver_path)
             driver = webdriver.Chrome(service=service, options=options)
         else:
-                driver = webdriver.Chrome(options=options)
+            print("No ChromeDriver path found, letting Selenium handle it")
+            driver = webdriver.Chrome(options=options)
             
         return driver
     except Exception as e:
