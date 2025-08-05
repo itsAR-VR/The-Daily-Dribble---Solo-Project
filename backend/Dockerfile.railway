@@ -74,11 +74,22 @@ RUN google-chrome --version && \
     /usr/local/bin/chromedriver --version && \
     echo "Chrome and ChromeDriver installed successfully"
 
-# Make ChromeDriver accessible to all users
-RUN chmod 755 /usr/local/bin/chromedriver
+# Make ChromeDriver accessible to all users and fix dependencies
+RUN chmod 755 /usr/local/bin/chromedriver && \
+    # Test ChromeDriver can execute
+    /usr/local/bin/chromedriver --version || echo "ChromeDriver test failed"
 
-# Create directory for Chrome user data
-RUN mkdir -p /tmp/.chrome && chmod 777 /tmp/.chrome
+# Create directory for Chrome user data and Selenium cache
+RUN mkdir -p /tmp/.chrome && chmod 777 /tmp/.chrome && \
+    mkdir -p /root/.cache/selenium && chmod 777 /root/.cache/selenium
+
+# Install missing dependencies for ChromeDriver
+RUN apt-get update && apt-get install -y \
+    libnss3 \
+    libgconf-2-4 \
+    libxi6 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN useradd -m -u 1000 botuser && chown -R botuser:botuser /app

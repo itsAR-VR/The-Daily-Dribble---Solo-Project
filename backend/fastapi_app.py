@@ -1548,15 +1548,18 @@ async def debug_test_chrome(request: dict):
                 logs.append(f"Set Chrome binary location: {chrome_bin}")
         
         # Try to create driver
-        if chromedriver_path and os.path.exists(chromedriver_path):
-            if verbose:
-                logs.append(f"Using ChromeDriver service with path: {chromedriver_path}")
-            service = Service(chromedriver_path)
-            driver = webdriver.Chrome(service=service, options=options)
-        else:
-            if verbose:
-                logs.append("Using default ChromeDriver (Selenium Manager)")
-            driver = webdriver.Chrome(options=options)
+        # Force disable Selenium Manager
+        os.environ['SE_SKIP_DRIVER_DOWNLOAD'] = '1'
+        
+        if not chromedriver_path:
+            chromedriver_path = "/usr/local/bin/chromedriver"
+            
+        if verbose:
+            logs.append(f"Using ChromeDriver at: {chromedriver_path}")
+            logs.append(f"ChromeDriver exists: {os.path.exists(chromedriver_path)}")
+            
+        service = Service(executable_path=chromedriver_path)
+        driver = webdriver.Chrome(service=service, options=options)
         
         if verbose:
             logs.append("Chrome driver created successfully!")

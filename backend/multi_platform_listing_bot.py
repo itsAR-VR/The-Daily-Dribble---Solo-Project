@@ -337,17 +337,19 @@ def create_driver() -> webdriver.Chrome:
                     chromedriver_path = path
                     break
         
+        # Force disable Selenium Manager
+        os.environ['SE_SKIP_DRIVER_DOWNLOAD'] = '1'
+        
         # Always use explicit service to avoid Selenium Manager issues
         if chromedriver_path and os.path.exists(chromedriver_path):
             print(f"Using ChromeDriver at: {chromedriver_path}")
             service = Service(executable_path=chromedriver_path)
-            # Disable build check to avoid version mismatch issues
-            service._disable_build_check = True
             driver = webdriver.Chrome(service=service, options=options)
         else:
-            # Force use of system chromedriver
-            print("Warning: ChromeDriver path not found, using system chromedriver")
-            service = Service(executable_path="chromedriver")
+            # If path not found but env var is set, use it anyway
+            chromedriver_path = chromedriver_path or "/usr/local/bin/chromedriver"
+            print(f"Forcing ChromeDriver path: {chromedriver_path}")
+            service = Service(executable_path=chromedriver_path)
             driver = webdriver.Chrome(service=service, options=options)
             
         return driver
