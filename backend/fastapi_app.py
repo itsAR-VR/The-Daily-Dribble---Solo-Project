@@ -1339,6 +1339,195 @@ async def platform_status():
     }
 
 
+@app.get("/debug/environment")
+async def debug_environment():
+    """Get detailed environment and Chrome installation info"""
+    import platform
+    import subprocess
+    
+    env_info = {
+        "python_version": platform.python_version(),
+        "platform": platform.platform(),
+        "chrome_bin": os.getenv("CHROME_BIN"),
+        "chromedriver_path": os.getenv("CHROMEDRIVER_PATH"),
+        "railway_environment": os.getenv("RAILWAY_ENVIRONMENT"),
+        "path": os.getenv("PATH")
+    }
+    
+    # Check Chrome installation
+    chrome_check = {"installed": False, "version": None, "path": None}
+    try:
+        # Try different Chrome paths
+        chrome_paths = [
+            os.getenv("CHROME_BIN"),
+            "/usr/bin/google-chrome",
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            "google-chrome",
+            "chromium"
+        ]
+        
+        for chrome_path in chrome_paths:
+            if chrome_path:
+                try:
+                    result = subprocess.run([chrome_path, "--version"], capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        chrome_check = {
+                            "installed": True,
+                            "version": result.stdout.strip(),
+                            "path": chrome_path
+                        }
+                        break
+                except:
+                    continue
+    except Exception as e:
+        chrome_check["error"] = str(e)
+    
+    env_info["chrome_check"] = chrome_check
+    
+    # Check ChromeDriver
+    driver_check = {"installed": False, "version": None, "path": None}
+    try:
+        driver_paths = [
+            os.getenv("CHROMEDRIVER_PATH"),
+            "/usr/local/bin/chromedriver",
+            "/usr/bin/chromedriver",
+            "chromedriver"
+        ]
+        
+        for driver_path in driver_paths:
+            if driver_path:
+                try:
+                    result = subprocess.run([driver_path, "--version"], capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        driver_check = {
+                            "installed": True,
+                            "version": result.stdout.strip(),
+                            "path": driver_path
+                        }
+                        break
+                except:
+                    continue
+    except Exception as e:
+        driver_check["error"] = str(e)
+    
+    env_info["chromedriver_check"] = driver_check
+    
+    # Check for missing libraries
+    missing_libs = []
+    try:
+        # Check for common missing dependencies
+        libs_to_check = [
+            "libnss3.so",
+            "libnspr4.so",
+            "libatk-1.0.so.0",
+            "libatk-bridge-2.0.so.0",
+            "libcups.so.2",
+            "libdbus-1.so.3",
+            "libdrm.so.2",
+            "libxkbcommon.so.0",
+            "libX11.so.6",
+            "libXcomposite.so.1",
+            "libXdamage.so.1",
+            "libXext.so.6",
+            "libXfixes.so.3",
+            "libXrandr.so.2",
+            "libgbm.so.1",
+            "libasound.so.2"
+        ]
+        
+        result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True)
+        if result.returncode == 0:
+            installed_libs = result.stdout
+            for lib in libs_to_check:
+                if lib not in installed_libs:
+                    missing_libs.append(lib)
+    except:
+        pass
+    
+    if missing_libs:
+        env_info["missing_libs"] = missing_libs
+    
+    return env_info
+
+
+@app.post("/debug/test-chrome")
+async def debug_test_chrome(request: dict):
+    """Test Chrome driver creation with verbose output"""
+    verbose = request.get("verbose", False)
+    logs = []
+    
+    try:
+        from selenium import webdriver
+        from selenium.webdriver.chrome.service import Service
+        
+        if verbose:
+            logs.append("Starting Chrome driver test...")
+        
+        # Get Chrome and ChromeDriver paths
+        chrome_bin = os.getenv("CHROME_BIN")
+        chromedriver_path = os.getenv("CHROMEDRIVER_PATH")
+        
+        if verbose:
+            logs.append(f"CHROME_BIN: {chrome_bin}")
+            logs.append(f"CHROMEDRIVER_PATH: {chromedriver_path}")
+        
+        # Setup options
+        options = webdriver.ChromeOptions()
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-software-rasterizer")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-plugins")
+        options.add_argument("--disable-images")
+        options.add_argument("--disable-javascript")
+        
+        if chrome_bin:
+            options.binary_location = chrome_bin
+            if verbose:
+                logs.append(f"Set Chrome binary location: {chrome_bin}")
+        
+        # Try to create driver
+        if chromedriver_path and os.path.exists(chromedriver_path):
+            if verbose:
+                logs.append(f"Using ChromeDriver service with path: {chromedriver_path}")
+            service = Service(chromedriver_path)
+            driver = webdriver.Chrome(service=service, options=options)
+        else:
+            if verbose:
+                logs.append("Using default ChromeDriver (Selenium Manager)")
+            driver = webdriver.Chrome(options=options)
+        
+        if verbose:
+            logs.append("Chrome driver created successfully!")
+        
+        # Test navigation
+        driver.get("data:text/html,<h1>Chrome Test</h1>")
+        title = driver.title
+        
+        if verbose:
+            logs.append(f"Page title: {title}")
+        
+        driver.quit()
+        
+        return {
+            "success": True,
+            "message": "Chrome driver created and tested successfully",
+            "logs": logs if verbose else None
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc() if verbose else None,
+            "logs": logs if verbose else None
+        }
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
