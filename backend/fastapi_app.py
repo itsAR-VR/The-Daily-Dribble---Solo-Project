@@ -62,14 +62,31 @@ except Exception as e:
 
 # Test Chrome availability on startup
 CHROME_AVAILABLE = True
+chrome_test_error = None
 try:
     from backend.multi_platform_listing_bot import create_driver
+    print("🔍 Testing Chrome driver creation...")
+    print(f"CHROME_BIN: {os.getenv('CHROME_BIN')}")
+    print(f"CHROMEDRIVER_PATH: {os.getenv('CHROMEDRIVER_PATH')}")
     test_driver = create_driver()
     test_driver.quit()
     print("✅ Chrome driver test successful")
 except Exception as e:
     CHROME_AVAILABLE = False
+    chrome_test_error = str(e)
     print(f"❌ Chrome driver test failed: {e}")
+    print(f"Chrome binary location: {os.getenv('CHROME_BIN')}")
+    print(f"PATH: {os.getenv('PATH')}")
+    
+    # Try to find Chrome
+    import subprocess
+    try:
+        result = subprocess.run(["which", "google-chrome"], capture_output=True, text=True)
+        print(f"Chrome location: {result.stdout.strip()}")
+        result = subprocess.run(["which", "chromedriver"], capture_output=True, text=True)
+        print(f"ChromeDriver location: {result.stdout.strip()}")
+    except:
+        pass
     
     # Create a fallback function
     def run_from_spreadsheet_fallback(input_path: str, output_path: str) -> None:
@@ -1449,6 +1466,47 @@ async def debug_environment():
         env_info["missing_libs"] = missing_libs
     
     return env_info
+
+
+@app.get("/test/chrome-status")
+async def test_chrome_status():
+    """Real-time Chrome status check"""
+    from selenium import webdriver
+    
+    result = {
+        "chrome_bin": os.getenv("CHROME_BIN"),
+        "chromedriver_path": os.getenv("CHROMEDRIVER_PATH"),
+        "se_chromedriver_path": os.getenv("SE_CHROMEDRIVER_PATH"),
+        "chrome_user_data_dir": os.getenv("CHROME_USER_DATA_DIR"),
+        "railway_environment": os.getenv("RAILWAY_ENVIRONMENT"),
+        "startup_test_passed": CHROME_AVAILABLE,
+        "startup_error": chrome_test_error if 'chrome_test_error' in globals() else None
+    }
+    
+    # Try to create Chrome driver now
+    try:
+        options = webdriver.ChromeOptions()
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        
+        chrome_bin = os.getenv("CHROME_BIN")
+        if chrome_bin:
+            options.binary_location = chrome_bin
+            
+        driver = webdriver.Chrome(options=options)
+        driver.get("data:text/html,<h1>Chrome Working!</h1>")
+        title = driver.title
+        driver.quit()
+        
+        result["runtime_test"] = "PASS"
+        result["test_message"] = f"Chrome created successfully, page title: {title}"
+        
+    except Exception as e:
+        result["runtime_test"] = "FAIL"
+        result["test_error"] = str(e)
+        
+    return result
 
 
 @app.post("/debug/test-chrome")
