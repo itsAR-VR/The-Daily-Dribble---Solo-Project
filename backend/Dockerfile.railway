@@ -101,10 +101,19 @@ ENV CHROME_USER_DATA_DIR=/tmp/.chrome
 RUN mkdir -p /home/botuser/.cache/selenium && \
     chown -R botuser:botuser /home/botuser/.cache
 
+# Ensure ChromeDriver is executable by all
+RUN chmod 755 /usr/local/bin/chromedriver && \
+    chmod 755 /usr/bin/google-chrome-stable || true
+
+# Create a symlink for chromedriver in PATH
+RUN ln -sf /usr/local/bin/chromedriver /usr/bin/chromedriver || true
+
 USER botuser
 
 # Pre-configure Selenium to use our ChromeDriver
 ENV SE_CHROMEDRIVER_PATH=/usr/local/bin/chromedriver
+ENV WDM_SKIP_DRIVER_DOWNLOAD=1
+ENV SE_SKIP_DRIVER_DOWNLOAD=1
 
 # Expose port (Railway sets PORT env var)
 EXPOSE 8000

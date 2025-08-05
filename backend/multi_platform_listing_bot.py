@@ -326,6 +326,20 @@ def create_driver() -> webdriver.Chrome:
     try:
         # Try to create driver with Service for better error handling
         from selenium.webdriver.chrome.service import Service
+        import shutil
+        
+        # Clear Selenium's cache to prevent using wrong ChromeDriver
+        selenium_cache = os.path.expanduser("~/.cache/selenium")
+        if os.path.exists(selenium_cache):
+            try:
+                shutil.rmtree(selenium_cache)
+                print(f"Cleared Selenium cache at {selenium_cache}")
+            except:
+                pass
+        
+        # Force disable Selenium Manager
+        os.environ['SE_SKIP_DRIVER_DOWNLOAD'] = '1'
+        os.environ['WDM_SKIP_DRIVER_DOWNLOAD'] = '1'
         
         # Try to find chromedriver - check environment variables first
         chromedriver_path = os.getenv("CHROMEDRIVER_PATH") or os.getenv("SE_CHROMEDRIVER_PATH")
@@ -336,9 +350,6 @@ def create_driver() -> webdriver.Chrome:
                 if os.path.exists(path):
                     chromedriver_path = path
                     break
-        
-        # Force disable Selenium Manager
-        os.environ['SE_SKIP_DRIVER_DOWNLOAD'] = '1'
         
         # Always use explicit service to avoid Selenium Manager issues
         if chromedriver_path and os.path.exists(chromedriver_path):
