@@ -279,17 +279,35 @@ class LinkedInPoster(MarketplacePoster):
             return f"Error: {exc}"
 
 
-POSTER_MAP: Dict[str, Type[MarketplacePoster]] = {
-    cls.PLATFORM.lower(): cls
-    for cls in [
-        HubxPoster,
-        GSMExchangePoster,
-        KardofPoster,
-        CellpexPoster,
-        HandlotPoster,
-        # LinkedInPoster,  # Temporarily disabled
-    ]
-}
+# Import enhanced posters with 2FA support
+try:
+    from backend.enhanced_platform_poster import (
+        EnhancedCellpexPoster,
+        EnhancedGSMExchangePoster,
+        EnhancedKardofPoster,
+        EnhancedHubxPoster,
+        EnhancedHandlotPoster
+    )
+    # Use enhanced posters with 2FA support
+    POSTER_MAP: Dict[str, Type[MarketplacePoster]] = {
+        "cellpex": EnhancedCellpexPoster,
+        "gsmexchange": EnhancedGSMExchangePoster,
+        "kardof": EnhancedKardofPoster,
+        "hubx": EnhancedHubxPoster,
+        "handlot": EnhancedHandlotPoster,
+    }
+except ImportError:
+    # Fallback to basic posters if enhanced not available
+    POSTER_MAP: Dict[str, Type[MarketplacePoster]] = {
+        cls.PLATFORM.lower(): cls
+        for cls in [
+            HubxPoster,
+            GSMExchangePoster,
+            KardofPoster,
+            CellpexPoster,
+            HandlotPoster,
+        ]
+    }
 
 
 def create_driver() -> webdriver.Chrome:
