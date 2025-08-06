@@ -24,7 +24,8 @@ class GmailService:
         self.service = None
         self.credentials = None
         self.credentials_file = os.path.join(os.path.dirname(__file__), 'google_oauth_credentials.json')
-        self.token_file = os.path.join(os.path.dirname(__file__), 'gmail_token.pickle')
+        # Use temp directory for Railway compatibility
+        self.token_file = os.path.join('/tmp', 'gmail_token.pickle')
         self.scopes = ['https://www.googleapis.com/auth/gmail.readonly']
         self._initialize_service()
     

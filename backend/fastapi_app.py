@@ -1670,7 +1670,7 @@ async def debug_gmail_init():
         "gmail_credentials_valid": gmail_service.credentials is not None if gmail_service else False,
         "gmail_credentials_expired": gmail_service.credentials.expired if gmail_service and gmail_service.credentials else None,
         "gmail_has_refresh_token": bool(gmail_service.credentials.refresh_token) if gmail_service and gmail_service.credentials else False,
-        "token_file_exists": os.path.exists(os.path.join(os.path.dirname(__file__), 'gmail_token.pickle')),
+        "token_file_exists": os.path.exists(os.path.join('/tmp', 'gmail_token.pickle')),
         "deployment_time": datetime.now().isoformat()
     }
 
