@@ -1675,6 +1675,39 @@ async def debug_gmail_init():
     }
 
 
+@app.post("/debug/gmail-reinit")
+async def debug_gmail_reinit():
+    """Force Gmail reinitialization to see logs"""
+    global gmail_service
+    try:
+        print("🔄 Forcing Gmail service reinitialization...")
+        from backend.gmail_service import GmailService
+        gmail_service = GmailService()
+        
+        # Try a test API call
+        test_result = None
+        if gmail_service.service:
+            try:
+                labels = gmail_service.service.users().labels().list(userId='me').execute()
+                test_result = f"Found {len(labels.get('labels', []))} labels"
+            except Exception as e:
+                test_result = f"API call failed: {str(e)}"
+        
+        return {
+            "success": True,
+            "gmail_available": gmail_service.is_available(),
+            "service_exists": gmail_service.service is not None,
+            "test_result": test_result,
+            "message": "Gmail reinitialization attempted - check logs"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
