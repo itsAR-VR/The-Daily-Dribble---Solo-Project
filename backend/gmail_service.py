@@ -78,6 +78,14 @@ class GmailService:
             self.service = build('gmail', 'v1', credentials=self.credentials)
             print("✅ Gmail service initialized successfully with OAuth")
             
+            # Test the service with a simple call
+            try:
+                self.service.users().labels().list(userId='me').execute()
+                print("✅ Gmail service verified - API calls working")
+            except Exception as test_error:
+                print(f"⚠️ Gmail service test failed: {test_error}")
+                # Service object exists but API calls may fail
+                
         except Exception as e:
             print(f"❌ Failed to initialize Gmail service: {e}")
             print(f"🔍 Error type: {type(e).__name__}")
