@@ -1679,10 +1679,21 @@ async def debug_gmail_init():
 async def debug_gmail_reinit():
     """Force Gmail reinitialization to see logs"""
     global gmail_service
+    initialization_logs = []
+    
+    # Capture logs during initialization
+    import io
+    import contextlib
+    
+    log_capture = io.StringIO()
+    
     try:
-        print("🔄 Forcing Gmail service reinitialization...")
-        from backend.gmail_service import GmailService
-        gmail_service = GmailService()
+        with contextlib.redirect_stdout(log_capture):
+            print("🔄 Forcing Gmail service reinitialization...")
+            from backend.gmail_service import GmailService
+            gmail_service = GmailService()
+        
+        initialization_logs = log_capture.getvalue().split('\n')
         
         # Try a test API call
         test_result = None
@@ -1698,13 +1709,16 @@ async def debug_gmail_reinit():
             "gmail_available": gmail_service.is_available(),
             "service_exists": gmail_service.service is not None,
             "test_result": test_result,
-            "message": "Gmail reinitialization attempted - check logs"
+            "initialization_logs": initialization_logs,
+            "message": "Gmail reinitialization attempted"
         }
     except Exception as e:
+        initialization_logs = log_capture.getvalue().split('\n')
         return {
             "success": False,
             "error": str(e),
-            "traceback": traceback.format_exc()
+            "traceback": traceback.format_exc(),
+            "initialization_logs": initialization_logs
         }
 
 
