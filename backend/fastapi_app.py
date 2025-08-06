@@ -1204,18 +1204,10 @@ async def test_enhanced_cellpex_2fa():
     try:
         # Import here to avoid circular imports
         from backend.enhanced_platform_poster import EnhancedCellpexPoster
-        from selenium import webdriver
+        from backend.multi_platform_listing_bot import create_driver
         
-        # Setup Chrome options for production
-        options = webdriver.ChromeOptions()
-        if os.getenv("RAILWAY_ENVIRONMENT"):  # Running on Railway
-            options.add_argument("--headless")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--window-size=1920x1080")
-        
-        driver = webdriver.Chrome(options=options)
+        # Use create_driver to properly handle SELENIUM_REMOTE_URL
+        driver = create_driver()
         
         try:
             # Initialize Cellpex poster
