@@ -32,6 +32,25 @@ class GmailService:
         """Initialize Gmail service with OAuth authentication."""
         print("🔄 Initializing Gmail service with OAuth...")
         try:
+            # First, check for refresh token in environment variable
+            refresh_token = os.getenv("GMAIL_REFRESH_TOKEN")
+            if refresh_token and not os.path.exists(self.token_file):
+                print("🔐 Found GMAIL_REFRESH_TOKEN in environment, creating credentials...")
+                # Create credentials from refresh token
+                from google.oauth2.credentials import Credentials
+                self.credentials = Credentials(
+                    token=None,
+                    refresh_token=refresh_token,
+                    token_uri="https://oauth2.googleapis.com/token",
+                    client_id=os.getenv("GMAIL_CLIENT_ID"),
+                    client_secret=os.getenv("GMAIL_CLIENT_SECRET"),
+                    scopes=self.scopes
+                )
+                # Save the credentials for future use
+                with open(self.token_file, 'wb') as token:
+                    pickle.dump(self.credentials, token)
+                print("✅ OAuth credentials created from refresh token")
+            
             # Check if we have existing credentials
             if os.path.exists(self.token_file):
                 print("📁 Loading existing OAuth token...")
