@@ -1651,6 +1651,21 @@ async def debug_test_chrome(request: dict):
         }
 
 
+@app.get("/debug/selenium-status")
+async def debug_selenium_status():
+    """Check if SELENIUM_REMOTE_URL is configured"""
+    selenium_url = os.getenv("SELENIUM_REMOTE_URL")
+    return {
+        "selenium_remote_url_set": bool(selenium_url),
+        "selenium_remote_url": selenium_url if selenium_url else "NOT SET",
+        "expected_value": "http://standalone-chrome:4444/wd/hub",
+        "chrome_bin": os.getenv("CHROME_BIN"),
+        "chromedriver_path": os.getenv("CHROMEDRIVER_PATH"),
+        "railway_environment": os.getenv("RAILWAY_ENVIRONMENT"),
+        "deployment_time": datetime.now().isoformat()
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
