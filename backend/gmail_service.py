@@ -35,26 +35,29 @@ class GmailService:
         try:
             # First, check for refresh token in environment variable
             refresh_token = os.getenv("GMAIL_REFRESH_TOKEN")
-            if refresh_token and not os.path.exists(self.token_file):
-                print("🔐 Found GMAIL_REFRESH_TOKEN in environment, creating credentials...")
+            client_id = os.getenv("GMAIL_CLIENT_ID")
+            client_secret = os.getenv("GMAIL_CLIENT_SECRET")
+            
+            # Always use environment credentials if available
+            if refresh_token and client_id and client_secret:
+                print("🔐 Found Gmail credentials in environment, creating OAuth credentials...")
                 # Create credentials from refresh token
                 from google.oauth2.credentials import Credentials
                 self.credentials = Credentials(
                     token=None,
                     refresh_token=refresh_token,
                     token_uri="https://oauth2.googleapis.com/token",
-                    client_id=os.getenv("GMAIL_CLIENT_ID"),
-                    client_secret=os.getenv("GMAIL_CLIENT_SECRET"),
+                    client_id=client_id,
+                    client_secret=client_secret,
                     scopes=self.scopes
                 )
                 # Save the credentials for future use
                 with open(self.token_file, 'wb') as token:
                     pickle.dump(self.credentials, token)
-                print("✅ OAuth credentials created from refresh token")
-            
-            # Check if we have existing credentials
-            if os.path.exists(self.token_file):
-                print("📁 Loading existing OAuth token...")
+                print("✅ OAuth credentials created from environment variables")
+            # Only load from file if no environment credentials
+            elif os.path.exists(self.token_file):
+                print("📁 Loading existing OAuth token from file...")
                 with open(self.token_file, 'rb') as token:
                     self.credentials = pickle.load(token)
             
