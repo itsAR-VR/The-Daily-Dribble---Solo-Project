@@ -1659,6 +1659,22 @@ async def debug_selenium_status():
     }
 
 
+@app.get("/debug/gmail-init")
+async def debug_gmail_init():
+    """Debug Gmail initialization with refresh token"""
+    return {
+        "gmail_refresh_token_set": bool(os.getenv("GMAIL_REFRESH_TOKEN")),
+        "gmail_client_id_set": bool(os.getenv("GMAIL_CLIENT_ID")),
+        "gmail_client_secret_set": bool(os.getenv("GMAIL_CLIENT_SECRET")),
+        "gmail_service_available": gmail_service.is_available() if gmail_service else False,
+        "gmail_credentials_valid": gmail_service.credentials is not None if gmail_service else False,
+        "gmail_credentials_expired": gmail_service.credentials.expired if gmail_service and gmail_service.credentials else None,
+        "gmail_has_refresh_token": bool(gmail_service.credentials.refresh_token) if gmail_service and gmail_service.credentials else False,
+        "token_file_exists": os.path.exists(os.path.join(os.path.dirname(__file__), 'gmail_token.pickle')),
+        "deployment_time": datetime.now().isoformat()
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
