@@ -332,11 +332,9 @@ def create_driver() -> webdriver.Chrome:
         if selenium_remote_url:
             # Use remote Selenium Grid (e.g., standalone-chrome container)
             print(f"Using remote Selenium at: {selenium_remote_url}")
-            from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
             
             driver = webdriver.Remote(
                 command_executor=selenium_remote_url,
-                desired_capabilities=DesiredCapabilities.CHROME,
                 options=options
             )
             print("✅ Remote Chrome driver created successfully")
