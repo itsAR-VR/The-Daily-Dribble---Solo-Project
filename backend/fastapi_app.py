@@ -1616,12 +1616,13 @@ async def debug_test_chrome(request: dict):
             if verbose:
                 logs.append(f"Set Chrome binary location: {chrome_bin}")
         
-        # Try to create driver
+        # Try to create driver using the proper function that checks for SELENIUM_REMOTE_URL
+        from backend.multi_platform_listing_bot import create_driver
+        
         if verbose:
-            logs.append("Using Selenium Manager for ChromeDriver")
+            logs.append("Creating driver using create_driver() function")
             
-        # Let Selenium Manager handle ChromeDriver
-        driver = webdriver.Chrome(options=options)
+        driver = create_driver()
         
         if verbose:
             logs.append("Chrome driver created successfully!")
