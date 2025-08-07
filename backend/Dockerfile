@@ -16,12 +16,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
+# Copy backend requirements and install Python dependencies
+COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy entire backend source so all modules (e.g., gmail_service.py) are available
-COPY . .
+# Copy only the backend source so imports resolve from /app
+COPY backend/ .
 
 # Create jobs directory
 RUN mkdir -p jobs
@@ -29,6 +29,9 @@ RUN mkdir -p jobs
 # Set environment variables for Chrome
 ENV CHROME_BIN=/usr/bin/google-chrome
 ENV CHROME_PATH=/usr/bin/google-chrome
+
+# Ensure Python can import from /app
+ENV PYTHONPATH=/app
 
 # Expose port
 EXPOSE $PORT
