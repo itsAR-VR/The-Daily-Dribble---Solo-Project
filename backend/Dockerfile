@@ -20,9 +20,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the main script and FastAPI app
-COPY multi_platform_listing_bot.py .
-COPY fastapi_app.py .
+# Copy entire backend source so all modules (e.g., gmail_service.py) are available
+COPY . .
 
 # Create jobs directory
 RUN mkdir -p jobs
@@ -34,5 +33,5 @@ ENV CHROME_PATH=/usr/bin/google-chrome
 # Expose port
 EXPOSE $PORT
 
-# Start command  
+# Start command
 CMD uvicorn fastapi_app:app --host 0.0.0.0 --port $PORT 
