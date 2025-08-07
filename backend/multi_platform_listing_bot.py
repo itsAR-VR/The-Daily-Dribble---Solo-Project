@@ -279,97 +279,67 @@ class LinkedInPoster(MarketplacePoster):
             return f"Error: {exc}"
 
 
-# Import enhanced posters with 2FA support
-try:
-    from backend.enhanced_platform_poster import (
-        EnhancedCellpexPoster,
-        EnhancedGSMExchangePoster,
-        EnhancedKardofPoster,
-        EnhancedHubxPoster,
-        EnhancedHandlotPoster
-    )
-    # Use enhanced posters with 2FA support
-    POSTER_MAP: Dict[str, Type[MarketplacePoster]] = {
-        "cellpex": EnhancedCellpexPoster,
-        "gsmexchange": EnhancedGSMExchangePoster,
-        "kardof": EnhancedKardofPoster,
-        "hubx": EnhancedHubxPoster,
-        "handlot": EnhancedHandlotPoster,
-    }
-except ImportError:
-    # Fallback to basic posters if enhanced not available
-    POSTER_MAP: Dict[str, Type[MarketplacePoster]] = {
-        cls.PLATFORM.lower(): cls
-        for cls in [
-            HubxPoster,
-            GSMExchangePoster,
-            KardofPoster,
-            CellpexPoster,
-            HandlotPoster,
-        ]
-    }
+POSTER_MAP: Dict[str, Type[MarketplacePoster]] = {
+    cls.PLATFORM.lower(): cls
+    for cls in [
+        HubxPoster,
+        GSMExchangePoster,
+        KardofPoster,
+        CellpexPoster,
+        HandlotPoster,
+        # LinkedInPoster,  # Temporarily disabled
+    ]
+}
 
 
 def create_driver() -> webdriver.Chrome:
     options = webdriver.ChromeOptions()
     
-    # Essential arguments for containerized environments
-    options.add_argument("--headless=new")  # Use new headless mode
+    # Add headless mode for deployment environments
+    options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--disable-software-rasterizer")
-    options.add_argument("--window-size=1920,1080")
-    
-    # Additional stability arguments
+    options.add_argument("--window-size=1920x1080")
     options.add_argument("--disable-extensions")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--disable-setuid-sandbox")
-    options.add_argument("--single-process")  # Important for containers
-    options.add_argument("--disable-web-security")
-    options.add_argument("--disable-features=VizDisplayCompositor")
-    
-    # Set user data directory
-    user_data_dir = os.getenv("CHROME_USER_DATA_DIR", "/tmp/.chrome")
-    options.add_argument(f"--user-data-dir={user_data_dir}")
-    
-    # Set Chrome binary location if specified
-    chrome_binary = os.getenv("CHROME_BIN", "/usr/bin/google-chrome-stable")
-    if chrome_binary and os.path.exists(chrome_binary):
-        options.binary_location = chrome_binary
-        print(f"Using Chrome binary at: {chrome_binary}")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-background-timer-throttling")
+    options.add_argument("--disable-backgrounding-occluded-windows")
+    options.add_argument("--disable-renderer-backgrounding")
+    options.add_argument("--disable-features=TranslateUI")
+    options.add_argument("--disable-ipc-flooding-protection")
     
     # Disable automation detection
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
     
+    # Set chrome binary location if available
+    chrome_path = os.environ.get("CHROME_BIN") or os.environ.get("CHROME_PATH")
+    if chrome_path:
+        options.binary_location = chrome_path
+    
     try:
-        # Check if we should use remote Selenium Grid
-        selenium_remote_url = os.getenv("SELENIUM_REMOTE_URL")
+        # Try to create driver with Service for better error handling
+        from selenium.webdriver.chrome.service import Service
         
-        if selenium_remote_url:
-            # Use remote Selenium Grid (e.g., standalone-chrome container)
-            print(f"Using remote Selenium at: {selenium_remote_url}")
-            
-            driver = webdriver.Remote(
-                command_executor=selenium_remote_url,
-                options=options
-            )
-            print("✅ Remote Chrome driver created successfully")
+        # Try to find chromedriver
+        chromedriver_path = None
+        for path in ["/usr/local/bin/chromedriver", "/usr/bin/chromedriver", "chromedriver"]:
+            if os.path.exists(path) or path == "chromedriver":
+                chromedriver_path = path
+                break
+        
+        if chromedriver_path:
+            service = Service(chromedriver_path)
+            driver = webdriver.Chrome(service=service, options=options)
         else:
-            # Use local Chrome with Selenium Manager
-            print("Creating local Chrome driver with Selenium Manager...")
-            print(f"Chrome binary: {getattr(options, 'binary_location', 'Default')}")
-            print(f"Environment: {'Railway' if os.getenv('RAILWAY_ENVIRONMENT') else 'Local'}")
+                driver = webdriver.Chrome(options=options)
             
-            driver = webdriver.Chrome(options=options)
-            print("✅ Local Chrome driver created successfully")
-        
         return driver
     except Exception as e:
         # More detailed error information
         print(f"Chrome driver creation error: {e}")
-        print(f"Chrome binary location: {getattr(options, 'binary_location', 'Not set')}")
+        print(f"Chrome binary location: {chrome_path}")
         print(f"PATH: {os.environ.get('PATH', 'Not set')}")
         
         # Check if chrome and chromedriver exist

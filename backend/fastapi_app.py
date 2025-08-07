@@ -27,7 +27,7 @@ except ImportError:
 
 # Import the main script
 try:
-    from backend.multi_platform_listing_bot import run_from_spreadsheet
+    from multi_platform_listing_bot import run_from_spreadsheet
 except ImportError:
     # Create a dummy function if import fails
     def run_from_spreadsheet(input_path: str, output_path: str) -> None:
@@ -40,7 +40,7 @@ gmail_import_error = None
 
 try:
     print("📦 Attempting to import Gmail service...")
-    from backend.gmail_service import gmail_service
+    from gmail_service import gmail_service
     print("✅ Gmail service module imported successfully")
     # Gmail service is available if imported successfully, regardless of auth status
     GMAIL_AVAILABLE = True
@@ -60,35 +60,16 @@ except Exception as e:
     GMAIL_AVAILABLE = False
     gmail_service = None
 
-# Test Chrome availability on startup (non-blocking)
-CHROME_AVAILABLE = False
-chrome_test_error = "Not tested yet"
-print("🔍 Chrome driver configuration:")
-print(f"CHROME_BIN env: {os.getenv('CHROME_BIN', 'Not set')}")
-print(f"SELENIUM_REMOTE_URL: {os.getenv('SELENIUM_REMOTE_URL', 'Not set')}")
-print(f"Railway environment: {'Yes' if os.getenv('RAILWAY_ENVIRONMENT') else 'No'}")
-
-# Check for remote Selenium first
-if os.getenv("SELENIUM_REMOTE_URL"):
-    print("✅ Using remote Selenium Grid")
-    CHROME_AVAILABLE = True
-else:
-    # Check if Chrome binary exists locally
-    import subprocess
-    try:
-        result = subprocess.run(["which", "google-chrome-stable"], capture_output=True, text=True)
-        if result.returncode == 0:
-            print(f"✅ Chrome found at: {result.stdout.strip()}")
-            CHROME_AVAILABLE = True
-        else:
-            result = subprocess.run(["which", "google-chrome"], capture_output=True, text=True)
-            if result.returncode == 0:
-                print(f"✅ Chrome found at: {result.stdout.strip()}")
-                CHROME_AVAILABLE = True
-            else:
-                print("❌ Chrome not found in PATH")
-    except Exception as e:
-        print(f"❌ Error checking for Chrome: {e}")
+# Test Chrome availability on startup
+CHROME_AVAILABLE = True
+try:
+    from multi_platform_listing_bot import create_driver
+    test_driver = create_driver()
+    test_driver.quit()
+    print("✅ Chrome driver test successful")
+except Exception as e:
+    CHROME_AVAILABLE = False
+    print(f"❌ Chrome driver test failed: {e}")
     
     # Create a fallback function
     def run_from_spreadsheet_fallback(input_path: str, output_path: str) -> None:
@@ -1203,11 +1184,19 @@ async def test_enhanced_cellpex_2fa():
     """Test enhanced Cellpex 2FA flow in production"""
     try:
         # Import here to avoid circular imports
-        from backend.enhanced_platform_poster import EnhancedCellpexPoster
-        from backend.multi_platform_listing_bot import create_driver
+        from enhanced_platform_poster import EnhancedCellpexPoster
+        from selenium import webdriver
         
-        # Use create_driver to properly handle SELENIUM_REMOTE_URL
-        driver = create_driver()
+        # Setup Chrome options for production
+        options = webdriver.ChromeOptions()
+        if os.getenv("RAILWAY_ENVIRONMENT"):  # Running on Railway
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--window-size=1920x1080")
+        
+        driver = webdriver.Chrome(options=options)
         
         try:
             # Initialize Cellpex poster
@@ -1348,378 +1337,6 @@ async def platform_status():
         "ready_platforms": len([p for p in platforms.values() if p["status"] == "ready"]),
         "environment": "production" if os.getenv("RAILWAY_ENVIRONMENT") else "development"
     }
-
-
-@app.get("/debug/environment")
-async def debug_environment():
-    """Get detailed environment and Chrome installation info"""
-    import platform
-    import subprocess
-    
-    env_info = {
-        "python_version": platform.python_version(),
-        "platform": platform.platform(),
-        "chrome_bin": os.getenv("CHROME_BIN"),
-        "chromedriver_path": os.getenv("CHROMEDRIVER_PATH"),
-        "railway_environment": os.getenv("RAILWAY_ENVIRONMENT"),
-        "path": os.getenv("PATH")
-    }
-    
-    # Check Chrome installation
-    chrome_check = {"installed": False, "version": None, "path": None}
-    try:
-        # Try different Chrome paths
-        chrome_paths = [
-            os.getenv("CHROME_BIN"),
-            "/usr/bin/google-chrome",
-            "/usr/bin/chromium",
-            "/usr/bin/chromium-browser",
-            "google-chrome",
-            "chromium"
-        ]
-        
-        for chrome_path in chrome_paths:
-            if chrome_path:
-                try:
-                    result = subprocess.run([chrome_path, "--version"], capture_output=True, text=True, timeout=5)
-                    if result.returncode == 0:
-                        chrome_check = {
-                            "installed": True,
-                            "version": result.stdout.strip(),
-                            "path": chrome_path
-                        }
-                        break
-                except:
-                    continue
-    except Exception as e:
-        chrome_check["error"] = str(e)
-    
-    env_info["chrome_check"] = chrome_check
-    
-    # Check ChromeDriver
-    driver_check = {"installed": False, "version": None, "path": None}
-    try:
-        driver_paths = [
-            os.getenv("CHROMEDRIVER_PATH"),
-            "/usr/local/bin/chromedriver",
-            "/usr/bin/chromedriver",
-            "chromedriver"
-        ]
-        
-        for driver_path in driver_paths:
-            if driver_path:
-                try:
-                    result = subprocess.run([driver_path, "--version"], capture_output=True, text=True, timeout=5)
-                    if result.returncode == 0:
-                        driver_check = {
-                            "installed": True,
-                            "version": result.stdout.strip(),
-                            "path": driver_path
-                        }
-                        break
-                except:
-                    continue
-    except Exception as e:
-        driver_check["error"] = str(e)
-    
-    env_info["chromedriver_check"] = driver_check
-    
-    # Check for missing libraries
-    missing_libs = []
-    try:
-        # Check for common missing dependencies
-        libs_to_check = [
-            "libnss3.so",
-            "libnspr4.so",
-            "libatk-1.0.so.0",
-            "libatk-bridge-2.0.so.0",
-            "libcups.so.2",
-            "libdbus-1.so.3",
-            "libdrm.so.2",
-            "libxkbcommon.so.0",
-            "libX11.so.6",
-            "libXcomposite.so.1",
-            "libXdamage.so.1",
-            "libXext.so.6",
-            "libXfixes.so.3",
-            "libXrandr.so.2",
-            "libgbm.so.1",
-            "libasound.so.2"
-        ]
-        
-        result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True)
-        if result.returncode == 0:
-            installed_libs = result.stdout
-            for lib in libs_to_check:
-                if lib not in installed_libs:
-                    missing_libs.append(lib)
-    except:
-        pass
-    
-    if missing_libs:
-        env_info["missing_libs"] = missing_libs
-    
-    return env_info
-
-
-@app.get("/test/chrome-status")
-async def test_chrome_status():
-    """Real-time Chrome status check"""
-    from selenium import webdriver
-    
-    result = {
-        "chrome_bin": os.getenv("CHROME_BIN"),
-        "chromedriver_path": os.getenv("CHROMEDRIVER_PATH"),
-        "se_chromedriver_path": os.getenv("SE_CHROMEDRIVER_PATH"),
-        "chrome_user_data_dir": os.getenv("CHROME_USER_DATA_DIR"),
-        "railway_environment": os.getenv("RAILWAY_ENVIRONMENT"),
-        "startup_test_passed": CHROME_AVAILABLE,
-        "startup_error": chrome_test_error if 'chrome_test_error' in globals() else None
-    }
-    
-    # Try to create Chrome driver now
-    try:
-        options = webdriver.ChromeOptions()
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        
-        chrome_bin = os.getenv("CHROME_BIN")
-        if chrome_bin:
-            options.binary_location = chrome_bin
-            
-        driver = webdriver.Chrome(options=options)
-        driver.get("data:text/html,<h1>Chrome Working!</h1>")
-        title = driver.title
-        driver.quit()
-        
-        result["runtime_test"] = "PASS"
-        result["test_message"] = f"Chrome created successfully, page title: {title}"
-        
-    except Exception as e:
-        result["runtime_test"] = "FAIL"
-        result["test_error"] = str(e)
-        
-    return result
-
-
-@app.post("/debug/chromedriver-deps")
-async def debug_chromedriver_deps():
-    """Check ChromeDriver dependencies"""
-    import subprocess
-    import platform
-    
-    result = {
-        "chromedriver_found": False,
-        "chromedriver_path": None,
-        "chromedriver_version": None,
-        "exit_code": None,
-        "missing_libs": [],
-        "ldd_output": None,
-        "chrome_version": None
-    }
-    
-    # Find ChromeDriver in Selenium cache
-    selenium_cache = os.path.expanduser("~/.cache/selenium")
-    chromedriver_path = None
-    
-    if os.path.exists(selenium_cache):
-        for root, dirs, files in os.walk(selenium_cache):
-            for file in files:
-                if file == "chromedriver":
-                    chromedriver_path = os.path.join(root, file)
-                    result["chromedriver_found"] = True
-                    result["chromedriver_path"] = chromedriver_path
-                    break
-    
-    if chromedriver_path:
-        # Make it executable
-        os.chmod(chromedriver_path, 0o755)
-        
-        # Try to run it
-        try:
-            proc = subprocess.run([chromedriver_path, "--version"], 
-                                 capture_output=True, text=True)
-            result["exit_code"] = proc.returncode
-            if proc.returncode == 0:
-                result["chromedriver_version"] = proc.stdout.strip()
-            else:
-                # Check dependencies
-                if platform.system() == "Linux":
-                    ldd_result = subprocess.run(["ldd", chromedriver_path], 
-                                              capture_output=True, text=True)
-                    result["ldd_output"] = ldd_result.stdout
-                    if "not found" in ldd_result.stdout:
-                        missing_libs = [line.strip() for line in ldd_result.stdout.split('\n') 
-                                       if "not found" in line]
-                        result["missing_libs"] = missing_libs
-        except Exception as e:
-            result["error"] = str(e)
-    
-    # Check Chrome
-    for chrome_cmd in ["google-chrome", "google-chrome-stable"]:
-        try:
-            proc = subprocess.run([chrome_cmd, "--version"], 
-                                 capture_output=True, text=True)
-            if proc.returncode == 0:
-                result["chrome_version"] = proc.stdout.strip()
-                break
-        except:
-            pass
-    
-    return result
-
-
-@app.post("/debug/test-chrome")
-async def debug_test_chrome(request: dict):
-    """Test Chrome driver creation with verbose output"""
-    verbose = request.get("verbose", False)
-    logs = []
-    
-    try:
-        from selenium import webdriver
-        from selenium.webdriver.chrome.service import Service
-        
-        if verbose:
-            logs.append("Starting Chrome driver test...")
-        
-        # Get Chrome and ChromeDriver paths
-        chrome_bin = os.getenv("CHROME_BIN")
-        chromedriver_path = os.getenv("CHROMEDRIVER_PATH")
-        
-        if verbose:
-            logs.append(f"CHROME_BIN: {chrome_bin}")
-            logs.append(f"CHROMEDRIVER_PATH: {chromedriver_path}")
-        
-        # Setup options
-        options = webdriver.ChromeOptions()
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--disable-software-rasterizer")
-        options.add_argument("--disable-extensions")
-        options.add_argument("--disable-plugins")
-        options.add_argument("--disable-images")
-        options.add_argument("--disable-javascript")
-        
-        if chrome_bin:
-            options.binary_location = chrome_bin
-            if verbose:
-                logs.append(f"Set Chrome binary location: {chrome_bin}")
-        
-        # Try to create driver using the proper function that checks for SELENIUM_REMOTE_URL
-        from backend.multi_platform_listing_bot import create_driver
-        
-        if verbose:
-            logs.append("Creating driver using create_driver() function")
-            
-        driver = create_driver()
-        
-        if verbose:
-            logs.append("Chrome driver created successfully!")
-        
-        # Test navigation
-        driver.get("data:text/html,<h1>Chrome Test</h1>")
-        title = driver.title
-        
-        if verbose:
-            logs.append(f"Page title: {title}")
-        
-        driver.quit()
-        
-        return {
-            "success": True,
-            "message": "Chrome driver created and tested successfully",
-            "logs": logs if verbose else None
-        }
-        
-    except Exception as e:
-        import traceback
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc() if verbose else None,
-            "logs": logs if verbose else None
-        }
-
-
-@app.get("/debug/selenium-status")
-async def debug_selenium_status():
-    """Check if SELENIUM_REMOTE_URL is configured"""
-    selenium_url = os.getenv("SELENIUM_REMOTE_URL")
-    return {
-        "selenium_remote_url_set": bool(selenium_url),
-        "selenium_remote_url": selenium_url if selenium_url else "NOT SET",
-        "expected_value": "http://standalone-chrome:4444/wd/hub",
-        "chrome_bin": os.getenv("CHROME_BIN"),
-        "chromedriver_path": os.getenv("CHROMEDRIVER_PATH"),
-        "railway_environment": os.getenv("RAILWAY_ENVIRONMENT"),
-        "deployment_time": datetime.now().isoformat()
-    }
-
-
-@app.get("/debug/gmail-init")
-async def debug_gmail_init():
-    """Debug Gmail initialization with refresh token"""
-    return {
-        "gmail_refresh_token_set": bool(os.getenv("GMAIL_REFRESH_TOKEN")),
-        "gmail_client_id_set": bool(os.getenv("GMAIL_CLIENT_ID")),
-        "gmail_client_secret_set": bool(os.getenv("GMAIL_CLIENT_SECRET")),
-        "gmail_service_available": gmail_service.is_available() if gmail_service else False,
-        "gmail_credentials_valid": gmail_service.credentials is not None if gmail_service else False,
-        "gmail_credentials_expired": gmail_service.credentials.expired if gmail_service and gmail_service.credentials else None,
-        "gmail_has_refresh_token": bool(gmail_service.credentials.refresh_token) if gmail_service and gmail_service.credentials else False,
-        "token_file_exists": os.path.exists(os.path.join('/tmp', 'gmail_token.pickle')),
-        "deployment_time": datetime.now().isoformat()
-    }
-
-
-@app.post("/debug/gmail-reinit")
-async def debug_gmail_reinit():
-    """Force Gmail reinitialization to see logs"""
-    global gmail_service
-    initialization_logs = []
-    
-    # Capture logs during initialization
-    import io
-    import contextlib
-    
-    log_capture = io.StringIO()
-    
-    try:
-        with contextlib.redirect_stdout(log_capture):
-            print("🔄 Forcing Gmail service reinitialization...")
-            from backend.gmail_service import GmailService
-            gmail_service = GmailService()
-        
-        initialization_logs = log_capture.getvalue().split('\n')
-        
-        # Try a test API call
-        test_result = None
-        if gmail_service.service:
-            try:
-                labels = gmail_service.service.users().labels().list(userId='me').execute()
-                test_result = f"Found {len(labels.get('labels', []))} labels"
-            except Exception as e:
-                test_result = f"API call failed: {str(e)}"
-        
-        return {
-            "success": True,
-            "gmail_available": gmail_service.is_available(),
-            "service_exists": gmail_service.service is not None,
-            "test_result": test_result,
-            "initialization_logs": initialization_logs,
-            "message": "Gmail reinitialization attempted"
-        }
-    except Exception as e:
-        initialization_logs = log_capture.getvalue().split('\n')
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc(),
-            "initialization_logs": initialization_logs
-        }
 
 
 if __name__ == "__main__":

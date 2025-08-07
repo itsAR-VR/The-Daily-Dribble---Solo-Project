@@ -24,8 +24,7 @@ class GmailService:
         self.service = None
         self.credentials = None
         self.credentials_file = os.path.join(os.path.dirname(__file__), 'google_oauth_credentials.json')
-        # Use temp directory for Railway compatibility
-        self.token_file = os.path.join('/tmp', 'gmail_token.pickle')
+        self.token_file = os.path.join(os.path.dirname(__file__), 'gmail_token.pickle')
         self.scopes = ['https://www.googleapis.com/auth/gmail.readonly']
         self._initialize_service()
     
@@ -33,31 +32,9 @@ class GmailService:
         """Initialize Gmail service with OAuth authentication."""
         print("🔄 Initializing Gmail service with OAuth...")
         try:
-            # First, check for refresh token in environment variable
-            refresh_token = os.getenv("GMAIL_REFRESH_TOKEN")
-            client_id = os.getenv("GMAIL_CLIENT_ID")
-            client_secret = os.getenv("GMAIL_CLIENT_SECRET")
-            
-            # Always use environment credentials if available
-            if refresh_token and client_id and client_secret:
-                print("🔐 Found Gmail credentials in environment, creating OAuth credentials...")
-                # Create credentials from refresh token
-                from google.oauth2.credentials import Credentials
-                self.credentials = Credentials(
-                    token=None,
-                    refresh_token=refresh_token,
-                    token_uri="https://oauth2.googleapis.com/token",
-                    client_id=client_id,
-                    client_secret=client_secret,
-                    scopes=self.scopes
-                )
-                # Save the credentials for future use
-                with open(self.token_file, 'wb') as token:
-                    pickle.dump(self.credentials, token)
-                print("✅ OAuth credentials created from environment variables")
-            # Only load from file if no environment credentials
-            elif os.path.exists(self.token_file):
-                print("📁 Loading existing OAuth token from file...")
+            # Check if we have existing credentials
+            if os.path.exists(self.token_file):
+                print("📁 Loading existing OAuth token...")
                 with open(self.token_file, 'rb') as token:
                     self.credentials = pickle.load(token)
             
@@ -82,14 +59,6 @@ class GmailService:
             self.service = build('gmail', 'v1', credentials=self.credentials)
             print("✅ Gmail service initialized successfully with OAuth")
             
-            # Test the service with a simple call
-            try:
-                self.service.users().labels().list(userId='me').execute()
-                print("✅ Gmail service verified - API calls working")
-            except Exception as test_error:
-                print(f"⚠️ Gmail service test failed: {test_error}")
-                # Service object exists but API calls may fail
-                
         except Exception as e:
             print(f"❌ Failed to initialize Gmail service: {e}")
             print(f"🔍 Error type: {type(e).__name__}")
