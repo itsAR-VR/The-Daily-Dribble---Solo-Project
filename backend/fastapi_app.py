@@ -40,9 +40,14 @@ gmail_import_error = None
 
 try:
     print("📦 Attempting to import Gmail service...")
-    from gmail_service import gmail_service
+    try:
+        # Prefer local module import when backend files are copied into /app
+        from gmail_service import gmail_service as _gmail_service
+    except ImportError:
+        # Fallback for environments that keep a backend package path
+        from backend.gmail_service import gmail_service as _gmail_service
+    gmail_service = _gmail_service
     print("✅ Gmail service module imported successfully")
-    # Gmail service is available if imported successfully, regardless of auth status
     GMAIL_AVAILABLE = True
     auth_status = gmail_service.is_available()
     print(f"📊 Gmail service available: {GMAIL_AVAILABLE}")
@@ -50,7 +55,6 @@ try:
 except ImportError as e:
     gmail_import_error = str(e)
     print(f"❌ Gmail service import failed: {e}")
-    print("🔍 This is usually due to missing Google API dependencies")
     GMAIL_AVAILABLE = False
     gmail_service = None
 except Exception as e:
