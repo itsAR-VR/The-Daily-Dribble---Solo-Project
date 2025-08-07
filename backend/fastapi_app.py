@@ -25,9 +25,12 @@ except ImportError:
     OPENAI_AVAILABLE = False
     print("OpenAI not available. AI features will use fallback generation.")
 
-# Import the main script
+# Import the main script (robust path handling)
 try:
-    from multi_platform_listing_bot import run_from_spreadsheet
+    try:
+        from multi_platform_listing_bot import run_from_spreadsheet
+    except ImportError:
+        from backend.multi_platform_listing_bot import run_from_spreadsheet
 except ImportError:
     # Create a dummy function if import fails
     def run_from_spreadsheet(input_path: str, output_path: str) -> None:
@@ -79,7 +82,10 @@ try:
         print(f"🌐 Using remote Selenium at {remote_url}")
         test_driver = webdriver.Remote(command_executor=remote_url, options=options)
     else:
-        from multi_platform_listing_bot import create_driver
+        try:
+            from multi_platform_listing_bot import create_driver
+        except ImportError:
+            from backend.multi_platform_listing_bot import create_driver
         test_driver = create_driver()
     test_driver.quit()
     print("✅ Chrome driver test successful")
