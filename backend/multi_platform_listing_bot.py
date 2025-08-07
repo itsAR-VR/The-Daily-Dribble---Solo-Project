@@ -302,60 +302,56 @@ def create_driver() -> webdriver.Chrome:
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920x1080")
     options.add_argument("--disable-extensions")
-    options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-background-timer-throttling")
     options.add_argument("--disable-backgrounding-occluded-windows")
     options.add_argument("--disable-renderer-backgrounding")
     options.add_argument("--disable-features=TranslateUI")
     options.add_argument("--disable-ipc-flooding-protection")
-    
+
     # Disable automation detection
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
-    
+
     # Set chrome binary location if available
     chrome_path = os.environ.get("CHROME_BIN") or os.environ.get("CHROME_PATH")
     if chrome_path:
         options.binary_location = chrome_path
-    
+
+    remote_url = os.environ.get("SELENIUM_REMOTE_URL")
+    if remote_url:
+        # Prefer remote Selenium Grid when configured (Railway standalone-chrome)
+        return webdriver.Remote(command_executor=remote_url, options=options)
+
     try:
-        # Try to create driver with Service for better error handling
+        # Local driver fallback
         from selenium.webdriver.chrome.service import Service
-        
-        # Try to find chromedriver
         chromedriver_path = None
         for path in ["/usr/local/bin/chromedriver", "/usr/bin/chromedriver", "chromedriver"]:
             if os.path.exists(path) or path == "chromedriver":
                 chromedriver_path = path
                 break
-        
         if chromedriver_path:
             service = Service(chromedriver_path)
             driver = webdriver.Chrome(service=service, options=options)
         else:
-                driver = webdriver.Chrome(options=options)
-            
+            driver = webdriver.Chrome(options=options)
         return driver
     except Exception as e:
         # More detailed error information
         print(f"Chrome driver creation error: {e}")
         print(f"Chrome binary location: {chrome_path}")
         print(f"PATH: {os.environ.get('PATH', 'Not set')}")
-        
-        # Check if chrome and chromedriver exist
         import subprocess
         try:
             result = subprocess.run(["which", "google-chrome"], capture_output=True, text=True)
             print(f"Chrome location: {result.stdout.strip()}")
-        except:
+        except Exception:
             print("Could not find google-chrome")
-            
         try:
             result = subprocess.run(["which", "chromedriver"], capture_output=True, text=True)
             print(f"ChromeDriver location: {result.stdout.strip()}")
-        except:
+        except Exception:
             print("Could not find chromedriver")
-            
         raise RuntimeError(f"Failed to create Chrome driver: {e}")
 
 

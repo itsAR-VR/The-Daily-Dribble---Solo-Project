@@ -13,6 +13,7 @@ from typing import Optional, List, Dict
 from google.auth.transport.requests import Request
 from google.auth.exceptions import RefreshError
 from google_auth_oauthlib.flow import Flow
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -24,41 +25,73 @@ class GmailService:
         self.service = None
         self.credentials = None
         self.credentials_file = os.path.join(os.path.dirname(__file__), 'google_oauth_credentials.json')
-        self.token_file = os.path.join(os.path.dirname(__file__), 'gmail_token.pickle')
+        # Use a writable temp location in containerized environments like Railway
+        self.token_file = "/tmp/gmail_token.pickle"
         self.scopes = ['https://www.googleapis.com/auth/gmail.readonly']
         self._initialize_service()
     
     def _initialize_service(self):
-        """Initialize Gmail service with OAuth authentication."""
+        """Initialize Gmail service.
+        Priority: environment refresh token -> saved token file -> interactive OAuth.
+        """
         print("🔄 Initializing Gmail service with OAuth...")
         try:
-            # Check if we have existing credentials
-            if os.path.exists(self.token_file):
-                print("📁 Loading existing OAuth token...")
-                with open(self.token_file, 'rb') as token:
-                    self.credentials = pickle.load(token)
-            
-            # If there are no (valid) credentials available, let the user log in.
-            if not self.credentials or not self.credentials.valid:
-                if self.credentials and self.credentials.expired and self.credentials.refresh_token:
-                    print("🔄 Refreshing expired OAuth token...")
+            # 1) Preferred: Build credentials from environment (for Railway)
+            env_refresh = os.environ.get("GMAIL_REFRESH_TOKEN")
+            env_client_id = os.environ.get("GMAIL_CLIENT_ID")
+            env_client_secret = os.environ.get("GMAIL_CLIENT_SECRET")
+
+            if env_refresh and env_client_id and env_client_secret:
+                print("🔐 Found Gmail credentials in environment, creating OAuth credentials...")
+                self.credentials = Credentials(
+                    token=None,
+                    refresh_token=env_refresh,
+                    client_id=env_client_id,
+                    client_secret=env_client_secret,
+                    token_uri="https://oauth2.googleapis.com/token",
+                    scopes=self.scopes,
+                )
+                try:
+                    # Immediately refresh to obtain an access token
                     self.credentials.refresh(Request())
-                else:
-                    print("❌ No valid OAuth credentials found. User needs to authenticate.")
-                    print("🔗 Please use the /gmail/auth endpoint to start OAuth flow")
-                    return
-                
-                # Save the credentials for the next run
-                with open(self.token_file, 'wb') as token:
-                    pickle.dump(self.credentials, token)
-            
-            print("✅ OAuth credentials loaded successfully")
-            
-            # Build the Gmail service
+                    print("✅ OAuth credentials refreshed and access token obtained")
+                    # Persist for reuse
+                    with open(self.token_file, 'wb') as token:
+                        pickle.dump(self.credentials, token)
+                except RefreshError as e:
+                    print(f"❌ Failed to refresh credentials from environment: {e}")
+                    # Fall back to token file below
+                    self.credentials = None
+
+            # 2) Fallback: Load from token file and refresh if needed
+            if not self.credentials:
+                if os.path.exists(self.token_file):
+                    print("📁 Loading existing OAuth token from file...")
+                    with open(self.token_file, 'rb') as token:
+                        self.credentials = pickle.load(token)
+                    if self.credentials and self.credentials.expired and getattr(self.credentials, 'refresh_token', None):
+                        print("🔄 Refreshing expired OAuth token from file...")
+                        self.credentials.refresh(Request())
+
+            # 3) If still no valid credentials, require interactive auth
+            if not self.credentials or not self.credentials.valid:
+                print("❌ No valid OAuth credentials found. User needs to authenticate.")
+                print("🔗 Please use the /gmail/auth endpoint to start OAuth flow")
+                self.service = None
+                return
+
+            print("✅ OAuth credentials ready")
             print("🚀 Building Gmail API service...")
             self.service = build('gmail', 'v1', credentials=self.credentials)
-            print("✅ Gmail service initialized successfully with OAuth")
-            
+
+            # Quick sanity check to ensure the service works
+            try:
+                _ = self.service.users().labels().list(userId='me').execute()
+                print("✅ Gmail service verified with labels list")
+            except Exception as verify_err:
+                print(f"⚠️ Gmail service verification failed: {verify_err}")
+                # keep service; upstream calls can surface details
+
         except Exception as e:
             print(f"❌ Failed to initialize Gmail service: {e}")
             print(f"🔍 Error type: {type(e).__name__}")
