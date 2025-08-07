@@ -1194,6 +1194,32 @@ async def debug_environment():
     return debug_info
 
 
+# File system debug endpoint
+@app.get("/debug/files")
+async def debug_files():
+    """Inspect app filesystem and Python import paths for debugging imports."""
+    try:
+        app_root = "/app"
+        backend_dir = os.path.join(app_root, "backend")
+        here = os.path.dirname(os.path.abspath(__file__))
+        return {
+            "cwd": os.getcwd(),
+            "__file__": __file__,
+            "here": here,
+            "listdir_app": sorted(os.listdir(app_root)) if os.path.isdir(app_root) else None,
+            "listdir_here": sorted(os.listdir(here)) if os.path.isdir(here) else None,
+            "listdir_backend": sorted(os.listdir(backend_dir)) if os.path.isdir(backend_dir) else None,
+            "exists": {
+                "/app/gmail_service.py": os.path.exists(os.path.join(app_root, "gmail_service.py")),
+                "/app/backend/gmail_service.py": os.path.exists(os.path.join(backend_dir, "gmail_service.py")),
+                "/app/fastapi_app.py": os.path.exists(os.path.join(app_root, "fastapi_app.py")),
+                "/app/backend/__init__.py": os.path.exists(os.path.join(backend_dir, "__init__.py")),
+            },
+            "sys_path": sys.path,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 # Enhanced 2FA Testing Endpoints
 @app.post("/test/enhanced-2fa/cellpex")
 async def test_enhanced_cellpex_2fa():
