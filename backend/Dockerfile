@@ -38,3 +38,5 @@ EXPOSE $PORT
 
 # Start command
 CMD uvicorn fastapi_app:app --host 0.0.0.0 --port $PORT 
+# Start command
+CMD uvicorn fastapi_app:app --host 0.0.0.0 --port $PORT 

@@ -1,34 +1,73 @@
 #!/usr/bin/env python3
 """
-Enhanced platform poster with Gmail 2FA integration
+Enhanced platform poster with Gmail 2FA integration and optional step-by-step screenshot capture.
 """
 
 import time
+import base64
+from datetime import datetime
+import base64
 import os
 from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-# Import Gmail service for 2FA
+# Import Gmail service for 2FA (robust: try local then package path)
 try:
-    from backend.gmail_service import gmail_service
+    from gmail_service import gmail_service as _gmail_service
+    gmail_service = _gmail_service
     GMAIL_AVAILABLE = gmail_service and gmail_service.is_available()
-except:
-    GMAIL_AVAILABLE = False
-    gmail_service = None
+except Exception:
+    try:
+        from backend.gmail_service import gmail_service as _gmail_service
+        gmail_service = _gmail_service
+        GMAIL_AVAILABLE = gmail_service and gmail_service.is_available()
+    except Exception:
+        GMAIL_AVAILABLE = False
+        gmail_service = None
 
 class Enhanced2FAMarketplacePoster:
     """Enhanced base class with 2FA support via Gmail"""
     
-    def __init__(self, driver: webdriver.Chrome) -> None:
+    def __init__(self, driver: webdriver.Chrome, capture_callback=None) -> None:
         self.driver = driver
         self.username, self.password = self._load_credentials()
         self.gmail_service = gmail_service if GMAIL_AVAILABLE else None
         self.max_2fa_attempts = 3
         self.tfa_wait_time = 30  # seconds to wait for 2FA code
+        self._capture_callback = capture_callback
+
+    def _capture_step(self, label: str) -> None:
+        if not self._capture_callback:
+            return
+        try:
+            png = self.driver.get_screenshot_as_png()
+            image_b64 = base64.b64encode(png).decode("utf-8")
+            self._capture_callback({
+                "label": label,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "image_base64": image_b64,
+            })
+        except Exception:
+            # Non-fatal if screenshot fails
+            pass
+        self.last_steps = []  # step-by-step screenshots (base64) and notes
+
+    def _capture_step(self, step: str, message: str) -> None:
+        """Capture a screenshot into base64 and append to steps."""
+        try:
+            png = self.driver.get_screenshot_as_png()
+            b64 = base64.b64encode(png).decode("utf-8")
+        except Exception:
+            b64 = None
+        self.last_steps.append({
+            "step": step,
+            "message": message,
+            "screenshot_b64": b64
+        })
     
     def _load_credentials(self) -> tuple[str, str]:
         """Load platform credentials from environment variables"""
@@ -46,6 +85,7 @@ class Enhanced2FAMarketplacePoster:
             
         driver = self.driver
         driver.get(self.LOGIN_URL)
+        self._capture_step("login_page", f"Opened login page: {self.LOGIN_URL}")
         wait = WebDriverWait(driver, 20)
         
         try:
@@ -65,6 +105,7 @@ class Enhanced2FAMarketplacePoster:
             ))
             pass_field.clear()
             pass_field.send_keys(self.password)
+            self._capture_step("login_filled", "Filled username and password")
             
             # Submit login
             submit = driver.find_element(
@@ -72,6 +113,7 @@ class Enhanced2FAMarketplacePoster:
                 "button[type='submit'], input[type='submit'], button:contains('Login'), button:contains('Sign in')"
             )
             submit.click()
+            self._capture_step("login_submitted", "Submitted login form")
             
             # Check for 2FA
             if self._check_for_2fa():
@@ -79,6 +121,7 @@ class Enhanced2FAMarketplacePoster:
                 return self._handle_2fa()
             else:
                 print(f"✅ Logged into {self.PLATFORM} successfully (no 2FA)")
+                self._capture_step("login_success", "Logged in without 2FA")
                 return True
                 
         except TimeoutException:
@@ -119,6 +162,7 @@ class Enhanced2FAMarketplacePoster:
         print(f"📧 Waiting for 2FA email from {self.PLATFORM}...")
         print("⏳ Allowing time for email delivery (60 seconds)...")
         time.sleep(60)  # Wait for email to arrive
+        self._capture_step("2fa_wait_email", "Waiting for 2FA email to arrive")
         
         for attempt in range(self.max_2fa_attempts):
             print(f"🔍 Attempt {attempt + 1}/{self.max_2fa_attempts} - Searching for 2FA email...")
@@ -135,6 +179,7 @@ class Enhanced2FAMarketplacePoster:
                     time.sleep(3)
                     if self._check_login_success():
                         print(f"✅ 2FA successful for {self.PLATFORM}")
+                        self._capture_step("2fa_success", "2FA successful, logged in")
                         return True
                     else:
                         print(f"⚠️  2FA code might be incorrect or expired, retrying...")
@@ -233,8 +278,8 @@ class Enhanced2FAMarketplacePoster:
             
             Code:"""
             
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                response = client.chat.completions.create(
+                model="gpt-5",
                 messages=[
                     {"role": "system", "content": "You are a precise code extractor. Return only the authentication code or 'NO_CODE_FOUND'."},
                     {"role": "user", "content": prompt}
@@ -438,6 +483,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
         """Enhanced login with 2FA support - Cellpex specific implementation"""
         driver = self.driver
         driver.get(self.LOGIN_URL)
+        self._capture_step("cellpex_login_page", f"Opened login page: {self.LOGIN_URL}")
         wait = WebDriverWait(driver, 20)
         
         try:
@@ -455,12 +501,14 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             ))
             pass_field.clear()
             pass_field.send_keys(self.password)
+            self._capture_step("cellpex_login_filled", "Filled Cellpex credentials")
             
             # Submit login using the submit input
             submit = wait.until(EC.element_to_be_clickable(
                 (By.NAME, "btnLogin")
             ))
             submit.click()
+            self._capture_step("cellpex_login_submitted", "Submitted Cellpex login")
             
             # Wait a bit for potential redirect
             time.sleep(3)
@@ -469,6 +517,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             current_url = driver.current_url
             if "login_verify" in current_url:
                 print(f"📱 2FA required for {self.PLATFORM}")
+                self._capture_step("cellpex_2fa_page", "Cellpex 2FA verification page detected")
                 return self._handle_cellpex_2fa()
             else:
                 print(f"✅ Logged into {self.PLATFORM} successfully (no 2FA)")
@@ -506,6 +555,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
         print(f"📧 Waiting for 2FA email from {self.PLATFORM}...")
         print("⏳ Allowing time for email delivery (10 seconds)...")
         time.sleep(10)  # Shorter wait for Cellpex
+        self._capture_step("cellpex_2fa_wait", "Waiting shortly for Cellpex 2FA email")
         
         for attempt in range(self.max_2fa_attempts):
             print(f"🔍 Attempt {attempt + 1}/{self.max_2fa_attempts} - Searching for 2FA email...")
@@ -522,6 +572,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     time.sleep(3)
                     if self._check_cellpex_login_success():
                         print(f"✅ 2FA successful for {self.PLATFORM}")
+                        self._capture_step("cellpex_2fa_success", "Cellpex 2FA successful")
                         return True
                     else:
                         print(f"⚠️  2FA code might be incorrect or expired, retrying...")
@@ -658,6 +709,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             # Navigate to Sell Inventory page (discovered during testing)
             print("📍 Navigating to Cellpex Sell Inventory page...")
             driver.get("https://www.cellpex.com/list/wholesale-inventory")
+            self._capture_step("sell_inventory_page", "Opened Sell Inventory form")
             
             # Wait for form to load
             time.sleep(3)
@@ -680,6 +732,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     except:
                         pass
                 print("✅ Category selected")
+                self._capture_step("category_selected", "Category selected")
             except Exception as e:
                 print(f"⚠️  Could not select category: {e}")
             
@@ -696,6 +749,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     except:
                         pass
                 print(f"✅ Brand selected: {brand}")
+                self._capture_step("brand_selected", f"Brand selected: {brand}")
             except Exception as e:
                 print(f"⚠️  Could not select brand: {e}")
             
@@ -706,6 +760,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 quantity = str(row.get("quantity", "1"))
                 available_field.send_keys(quantity)
                 print(f"✅ Quantity entered: {quantity}")
+                self._capture_step("quantity_entered", f"Quantity entered: {quantity}")
             except Exception as e:
                 print(f"⚠️  Could not enter quantity: {e}")
             
@@ -721,6 +776,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     }
                 """, product_name)
                 print(f"✅ Product name set via JavaScript: {product_name}")
+                self._capture_step("product_name_set", f"Product name: {product_name}")
             except Exception as e:
                 print(f"⚠️  Skipping product name due to: {e}")
             
@@ -732,6 +788,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 driver.execute_script("arguments[0].value = arguments[1];", comments_field, description)
                 driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", comments_field)
                 print("✅ Description entered (JavaScript injection)")
+                self._capture_step("description_entered", "Entered description")
             except Exception as e:
                 print(f"⚠️  Could not enter description: {e}")
             
@@ -744,12 +801,12 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 driver.execute_script("arguments[0].value = arguments[1];", remarks_field, remarks)
                 driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", remarks_field)
                 print("✅ Remarks entered (JavaScript injection with memory info)")
+                self._capture_step("remarks_entered", "Entered remarks with memory info")
             except Exception as e:
                 print(f"⚠️  Could not enter remarks: {e}")
             
             # Take screenshot before submitting
-            driver.save_screenshot("cellpex_listing_filled.png")
-            print("📸 Screenshot saved: cellpex_listing_filled.png")
+            self._capture_step("form_filled", "Form fields filled before submit")
             
                         # Enhanced submit with popup handling
             print("📤 Submitting listing with enhanced popup handling...")
@@ -832,24 +889,24 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 
                 if has_success and not has_error:
                     print("🎉 Listing posted successfully!")
-                    driver.save_screenshot("cellpex_listing_success.png")
+                    self._capture_step("listing_success", "Listing posted successfully")
                     return "Success: Listing posted to Cellpex"
                 elif has_error:
                     print("❌ Error detected in response")
-                    driver.save_screenshot("cellpex_listing_error.png")
+                    self._capture_step("listing_error", "Form submission returned error")
                     return "Error: Form submission failed - check required fields"
                 else:
                     print("⚠️  Uncertain response - manual verification needed")
-                    driver.save_screenshot("cellpex_listing_uncertain.png")
+                    self._capture_step("listing_uncertain", "Submission response unclear")
                     return "Uncertain: Manual verification needed"
             else:
                 print("❌ Could not submit form")
-                driver.save_screenshot("cellpex_listing_no_submit.png")
+                self._capture_step("no_submit", "Could not find/activate submit control")
                 return "Error: Could not submit form"
             
         except Exception as e:
             print(f"❌ Error posting to Cellpex: {e}")
-            driver.save_screenshot("cellpex_listing_exception.png")
+            self._capture_step("exception", f"Exception during posting: {e}")
             return f"Error: {str(e)}"
 
 

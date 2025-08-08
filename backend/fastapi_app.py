@@ -283,14 +283,28 @@ Requirements:
 Write a compelling product description:
             """
             
-            response = client.chat.completions.create(
-                model="gpt-4o",  # GPT-4.1 is accessed via gpt-4o model name
-                messages=[
-                    {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=400,
-                temperature=0.7
+            # Prefer GPT-5 for richer generation; fall back to gpt-4o
+            try_model = "gpt-5"
+            try:
+                response = client.chat.completions.create(
+                    model=try_model,
+                    messages=[
+                        {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=400,
+                    temperature=0.7
+                )
+            except Exception:
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=400,
+                    temperature=0.7
+                )
             )
             
             return response.choices[0].message.content.strip()
@@ -358,15 +372,26 @@ Generate 15-20 relevant keywords that buyers would search for. Include:
 Return as comma-separated list only:
             """
             
-            response = client.chat.completions.create(
-                model="gpt-4o",  # GPT-4.1 is accessed via gpt-4o model name
-                messages=[
-                    {"role": "system", "content": "You are an SEO expert for marketplace listings. Generate keywords that maximize search visibility."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=200,
-                temperature=0.5
-            )
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-5",
+                    messages=[
+                        {"role": "system", "content": "You are an SEO expert for marketplace listings. Generate keywords that maximize search visibility."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=200,
+                    temperature=0.5
+                )
+            except Exception:
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": "You are an SEO expert for marketplace listings. Generate keywords that maximize search visibility."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=200,
+                    temperature=0.5
+                )
             
             ai_keywords = [k.strip().lower() for k in response.choices[0].message.content.split(',')]
             return ai_keywords[:20]  # Limit to 20 keywords
@@ -699,7 +724,7 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
         # Create platform-specific data structure
         platform_data = map_to_platform_fields(platform, listing_data)
         
-        # Simulate browser automation steps
+        # Visual steps from enhanced poster if available
         browser_steps = []
         
         # Step 1: Opening browser
@@ -777,10 +802,50 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
         df = pd.DataFrame([platform_data])
         df.to_excel(temp_input, index=False)
         
-        # Process the listing (simulate or real based on Chrome availability)
+        # Process the listing (visual with enhanced poster if possible)
         if CHROME_AVAILABLE:
             try:
-                run_from_spreadsheet(temp_input, temp_output)
+                # If platform is supported by enhanced posters, run it directly to capture steps
+                if platform in ["cellpex", "gsmexchange"]:
+                    from selenium import webdriver
+                    options = webdriver.ChromeOptions()
+                    remote_url = os.environ.get("SELENIUM_REMOTE_URL")
+                    if remote_url:
+                        driver = webdriver.Remote(command_executor=remote_url, options=options)
+                    else:
+                        try:
+                            from multi_platform_listing_bot import create_driver
+                        except ImportError:
+                            from backend.multi_platform_listing_bot import create_driver
+                        driver = create_driver()
+
+                    try:
+                        from enhanced_platform_poster import ENHANCED_POSTERS
+                        poster = ENHANCED_POSTERS[platform](driver)
+                        # Login + post minimal listing
+                        login_ok = poster.login_with_2fa()
+                        browser_steps.extend(poster.last_steps)
+                        if not login_ok:
+                            success = False
+                        else:
+                            # Build a minimal row-like dict
+                            row_like = {
+                                "brand": listing_data.brand,
+                                "model": listing_data.model_code,
+                                "quantity": listing_data.quantity,
+                                "price": listing_data.price,
+                                "condition": listing_data.condition,
+                                "memory": listing_data.memory,
+                                "color": listing_data.color,
+                                "description": listing_data.description,
+                            }
+                            result_msg = poster.post_listing(row_like)
+                            browser_steps.extend(poster.last_steps)
+                            success = result_msg.startswith("Success")
+                    finally:
+                        driver.quit()
+                else:
+                    run_from_spreadsheet(temp_input, temp_output)
                 
                 # Read the output to check status
                 result_df = pd.read_excel(temp_output)
