@@ -819,33 +819,35 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                         driver = create_driver()
 
                     try:
-                        # Prefer local import since Docker copies backend/ into /app
-                        from enhanced_platform_poster import ENHANCED_POSTERS
-                    except Exception:
-                        # Fallback when backend is packaged as a module
-                        from backend.enhanced_platform_poster import ENHANCED_POSTERS
+                        # Resolve posters with robust import, then execute poster flow
+                        try:
+                            # Prefer local import since Docker copies backend/ into /app
+                            from enhanced_platform_poster import ENHANCED_POSTERS
+                        except Exception:
+                            # Fallback when backend is packaged as a module
+                            from backend.enhanced_platform_poster import ENHANCED_POSTERS
 
-                    poster = ENHANCED_POSTERS[platform](driver)
-                    # Login + post minimal listing
-                    login_ok = poster.login_with_2fa()
-                    browser_steps.extend(poster.last_steps)
-                    if not login_ok:
-                        success = False
-                    else:
-                        # Build a minimal row-like dict
-                        row_like = {
-                            "brand": listing_data.brand,
-                            "model": listing_data.model_code,
-                            "quantity": listing_data.quantity,
-                            "price": listing_data.price,
-                            "condition": listing_data.condition,
-                            "memory": listing_data.memory,
-                            "color": listing_data.color,
-                            "description": listing_data.description,
-                        }
-                        result_msg = poster.post_listing(row_like)
+                        poster = ENHANCED_POSTERS[platform](driver)
+                        # Login + post minimal listing
+                        login_ok = poster.login_with_2fa()
                         browser_steps.extend(poster.last_steps)
-                        success = result_msg.startswith("Success")
+                        if not login_ok:
+                            success = False
+                        else:
+                            # Build a minimal row-like dict
+                            row_like = {
+                                "brand": listing_data.brand,
+                                "model": listing_data.model_code,
+                                "quantity": listing_data.quantity,
+                                "price": listing_data.price,
+                                "condition": listing_data.condition,
+                                "memory": listing_data.memory,
+                                "color": listing_data.color,
+                                "description": listing_data.description,
+                            }
+                            result_msg = poster.post_listing(row_like)
+                            browser_steps.extend(poster.last_steps)
+                            success = result_msg.startswith("Success")
                     finally:
                         driver.quit()
                 else:
