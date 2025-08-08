@@ -819,6 +819,8 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                         driver = create_driver()
 
                     try:
+                        from backend.enhanced_platform_poster import ENHANCED_POSTERS
+                    except Exception:
                         from enhanced_platform_poster import ENHANCED_POSTERS
                         poster = ENHANCED_POSTERS[platform](driver)
                         # Login + post minimal listing
