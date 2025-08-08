@@ -67,47 +67,20 @@ except Exception as e:
     GMAIL_AVAILABLE = False
     gmail_service = None
 
-# Test Chrome availability on startup, prefer remote Selenium if configured
-CHROME_AVAILABLE = True
-try:
-    from selenium import webdriver
-    from selenium.webdriver.chrome.options import Options as ChromeOptions
-    remote_url = os.environ.get("SELENIUM_REMOTE_URL")
-    options = ChromeOptions()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    if remote_url:
-        print(f"🌐 Using remote Selenium at {remote_url}")
-        test_driver = webdriver.Remote(command_executor=remote_url, options=options)
-    else:
-        try:
-            from multi_platform_listing_bot import create_driver
-        except ImportError:
-            from backend.multi_platform_listing_bot import create_driver
-        test_driver = create_driver()
-    test_driver.quit()
-    print("✅ Chrome driver test successful")
-except Exception as e:
-    CHROME_AVAILABLE = False
-    print(f"❌ Chrome driver test failed: {e}")
-    
-    # Create a fallback function
+# Chrome availability: avoid blocking startup by not creating a driver here
+remote_url = os.environ.get("SELENIUM_REMOTE_URL")
+local_chrome_bin = os.environ.get("CHROME_BIN", "/usr/bin/google-chrome")
+CHROME_AVAILABLE = bool(remote_url) or os.path.exists(local_chrome_bin)
+print(f"🧭 Chrome availability (non-blocking): remote_url_set={bool(remote_url)}, local_chrome_exists={os.path.exists(local_chrome_bin)}")
+
+if not CHROME_AVAILABLE:
+    # Create a lightweight fallback for spreadsheet processing
     def run_from_spreadsheet_fallback(input_path: str, output_path: str) -> None:
         import pandas as pd
-        
-        # Read the input file
         df = pd.read_excel(input_path)
-        
-        # Add a status column showing that Chrome is not available
         df['Status'] = 'Error: Chrome/Selenium not available in deployment environment. Please upgrade hosting plan or use local deployment.'
-        
-        # Save the result
         df.to_excel(output_path, index=False)
         print(f"Fallback processing complete: {len(df)} rows processed with error status")
-    
-    # Replace the function
     run_from_spreadsheet = run_from_spreadsheet_fallback
 
 app = FastAPI(
