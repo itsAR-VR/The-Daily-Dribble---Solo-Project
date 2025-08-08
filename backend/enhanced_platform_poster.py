@@ -39,6 +39,7 @@ class Enhanced2FAMarketplacePoster:
         self.max_2fa_attempts = 3
         self.tfa_wait_time = 30  # seconds to wait for 2FA code
         self._capture_callback = capture_callback
+        self.last_steps = []
 
     def _capture_step(self, label: str) -> None:
         if not self._capture_callback:
@@ -46,11 +47,15 @@ class Enhanced2FAMarketplacePoster:
         try:
             png = self.driver.get_screenshot_as_png()
             image_b64 = base64.b64encode(png).decode("utf-8")
-            self._capture_callback({
+            step = {
                 "label": label,
                 "timestamp": datetime.utcnow().isoformat() + "Z",
                 "image_base64": image_b64,
-            })
+            }
+            # store locally
+            self.last_steps.append(step)
+            # notify callback if present
+            self._capture_callback(step)
         except Exception:
             # Non-fatal if screenshot fails
             pass
@@ -278,16 +283,28 @@ class Enhanced2FAMarketplacePoster:
             
             Code:"""
             
-                response = client.chat.completions.create(
-                model="gpt-5",
-                messages=[
-                    {"role": "system", "content": "You are a precise code extractor. Return only the authentication code or 'NO_CODE_FOUND'."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=50,
-                temperature=0
-            )
-            
+            # Prefer GPT‑5 if available, then fall back gracefully
+            models = [os.getenv("OPENAI_MODEL", "gpt-5"), "gpt-4o", "gpt-3.5-turbo"]
+            response = None
+            last_err = None
+            for mdl in models:
+                try:
+                    response = client.chat.completions.create(
+                        model=mdl,
+                        messages=[
+                            {"role": "system", "content": "You are a precise code extractor. Return only the authentication code or 'NO_CODE_FOUND'."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        max_tokens=50,
+                        temperature=0
+                    )
+                    break
+                except Exception as e:
+                    last_err = e
+                    continue
+            if response is None:
+                raise last_err if last_err else RuntimeError("LLM call failed")
+
             extracted_code = response.choices[0].message.content.strip()
             
             if extracted_code == "NO_CODE_FOUND" or not extracted_code.isdigit():
