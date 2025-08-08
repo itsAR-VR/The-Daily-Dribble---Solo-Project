@@ -851,28 +851,29 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                 else:
                     run_from_spreadsheet(temp_input, temp_output)
                 
-                # Read the output to check status
-                result_df = pd.read_excel(temp_output)
-                if 'Status' in result_df.columns:
-                    status = result_df.iloc[0]['Status']
-                    if 'Error' in str(status) or 'Failed' in str(status) or 'Chrome' in str(status):
-                        browser_steps.append({
-                            "step": "submission",
-                            "status": "error",
-                            "message": str(status),
-                            "screenshot": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZmVlIi8+CiAgICA8dGV4dCB4PSIyMDAiIHk9IjE1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2Y0NCIgZm9udC1zaXplPSIxOCI+RXJyb3I8L3RleHQ+Cjwvc3ZnPg=="
-                        })
-                        success = False
+                # Read the output to check status if it exists (poster flow does not write this file)
+                if os.path.exists(temp_output):
+                    result_df = pd.read_excel(temp_output)
+                    if 'Status' in result_df.columns:
+                        status = result_df.iloc[0]['Status']
+                        if 'Error' in str(status) or 'Failed' in str(status) or 'Chrome' in str(status):
+                            browser_steps.append({
+                                "step": "submission",
+                                "status": "error",
+                                "message": str(status),
+                                "screenshot": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZmVlIi8+CiAgICA8dGV4dCB4PSIyMDAiIHk9IjE1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2Y0NCIgZm9udC1zaXplPSIxOCI+RXJyb3I8L3RleHQ+Cjwvc3ZnPg=="
+                            })
+                            success = False
+                        else:
+                            browser_steps.append({
+                                "step": "submission",
+                                "status": "success",
+                                "message": "Listing posted successfully!",
+                                "screenshot": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZWZlIi8+CiAgICA8dGV4dCB4PSIyMDAiIHk9IjE1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzRhNCIgZm9udC1zaXplPSIxOCI+U3VjY2VzcyE8L3RleHQ+Cjwvc3ZnPg=="
+                            })
+                            success = True
                     else:
-                        browser_steps.append({
-                            "step": "submission",
-                            "status": "success",
-                            "message": "Listing posted successfully!",
-                            "screenshot": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZWZlIi8+CiAgICA8dGV4dCB4PSIyMDAiIHk9IjE1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzRhNCIgZm9udC1zaXplPSIxOCI+U3VjY2VzcyE8L3RleHQ+Cjwvc3ZnPg=="
-                        })
                         success = True
-                else:
-                    success = True
             finally:
                 # Clean up temp files
                 for f in [temp_input, temp_output]:
