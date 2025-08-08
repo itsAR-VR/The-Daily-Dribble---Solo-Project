@@ -774,8 +774,14 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
         df = pd.DataFrame([platform_data])
         df.to_excel(temp_input, index=False)
         
+        # Determine Chrome availability at runtime (not just startup)
+        runtime_remote_url = os.environ.get("SELENIUM_REMOTE_URL")
+        chrome_bin_guess = os.environ.get("CHROME_BIN", "/usr/bin/google-chrome")
+        chrome_bin_alt = "/usr/bin/google-chrome-stable"
+        chrome_can_run = bool(runtime_remote_url) or os.path.exists(chrome_bin_guess) or os.path.exists(chrome_bin_alt)
+
         # Process the listing (visual with enhanced poster if possible)
-        if CHROME_AVAILABLE:
+        if chrome_can_run:
             try:
                 # If platform is supported by enhanced posters, run it directly to capture steps
                 if platform in ["cellpex", "gsmexchange"]:
