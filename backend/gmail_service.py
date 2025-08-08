@@ -342,36 +342,3 @@ class GmailService:
 
 # Global Gmail service instance
 gmail_service = GmailService()
-    def exchange_code_for_credentials(self, authorization_code: str, redirect_uri: str = "http://localhost:8000/gmail/callback"):
-        """Exchange authorization code for credentials."""
-        flow = self.get_oauth_flow(redirect_uri)
-        flow.fetch_token(code=authorization_code)
-        
-        # Save credentials
-        self.credentials = flow.credentials
-        with open(self.token_file, 'wb') as token:
-            pickle.dump(self.credentials, token)
-        
-        # Initialize service with new credentials
-        self.service = build('gmail', 'v1', credentials=self.credentials)
-        return True
-    
-    def revoke_credentials(self):
-        """Revoke OAuth credentials and delete token file."""
-        if self.credentials and hasattr(self.credentials, 'token'):
-            try:
-                self.credentials.revoke(Request())
-            except Exception as e:
-                print(f"Warning: Failed to revoke credentials: {e}")
-        
-        # Delete token file
-        if os.path.exists(self.token_file):
-            os.remove(self.token_file)
-        
-        self.credentials = None
-        self.service = None
-        return True
-
-
-# Global Gmail service instance
-gmail_service = GmailService()

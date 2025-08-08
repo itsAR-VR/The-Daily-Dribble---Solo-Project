@@ -123,13 +123,50 @@ export default function ListingBotUI() {
   const [items, setItems] = useState<ComprehensiveListingItem[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [productSuggestions, setProductSuggestions] = useState<string[]>([])
+  const [gmailStatus, setGmailStatus] = useState<"unknown" | "authenticated" | "requires_auth" | "not_configured">("unknown")
+  const [gmailRefreshToken, setGmailRefreshToken] = useState<string>("")
 
   useEffect(() => {
     const saved = localStorage.getItem("productSuggestions")
     if (saved) {
       setProductSuggestions(JSON.parse(saved))
     }
+    // Load Gmail auth status on mount
+    ;(async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/gmail/status`)
+        const data = await res.json()
+        if (data?.status) setGmailStatus(data.status)
+      } catch {
+        setGmailStatus("not_configured")
+      }
+    })()
   }, [])
+
+  const startGmailOAuth = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/gmail/auth`)
+      const data = await res.json()
+      if (data.authorization_url) {
+        window.open(data.authorization_url, "_blank")
+      }
+    } catch (e) {
+      console.error("Failed to start Gmail OAuth", e)
+    }
+  }
+
+  const fetchGmailRefreshToken = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/gmail/refresh-token`)
+      const data = await res.json()
+      if (data?.refresh_token) setGmailRefreshToken(data.refresh_token)
+      // Also refresh status
+      const s = await fetch(`${API_BASE_URL}/gmail/status`).then(r => r.json())
+      if (s?.status) setGmailStatus(s.status)
+    } catch (e) {
+      console.error("Failed to fetch refresh token", e)
+    }
+  }
 
   const addNewItem = () => {
     const newItem: ComprehensiveListingItem = {
@@ -385,6 +422,29 @@ export default function ListingBotUI() {
 
   return (
     <div className="container mx-auto p-6 max-w-6xl">
+      {/* Gmail Connect Section */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Gmail Connection</CardTitle>
+          <CardDescription>Authenticate to fetch 2FA verification codes automatically</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <Badge variant={gmailStatus === "authenticated" ? "default" : gmailStatus === "requires_auth" ? "destructive" : "secondary"}>
+              {gmailStatus === "authenticated" ? "Authenticated" : gmailStatus === "requires_auth" ? "Authentication required" : "Not configured"}
+            </Badge>
+            <Button size="sm" onClick={startGmailOAuth}>Connect Google</Button>
+            <Button size="sm" variant="outline" onClick={fetchGmailRefreshToken}>Check Token</Button>
+          </div>
+          {gmailRefreshToken && (
+            <div className="flex items-center gap-2">
+              <Input value={gmailRefreshToken} readOnly className="font-mono" />
+              <Button size="sm" onClick={() => navigator.clipboard.writeText(gmailRefreshToken)}>Copy</Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Multi-Platform Listing Bot</CardTitle>

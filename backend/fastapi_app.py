@@ -5,7 +5,7 @@ This FastAPI application wraps the multi-platform listing bot script,
 providing HTTP endpoints to submit Excel files and retrieve results.
 """
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Request
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -1043,17 +1043,27 @@ async def reinitialize_gmail_service():
 
 
 @app.get("/gmail/auth")
-async def start_gmail_oauth():
-    """Start Gmail OAuth authentication flow."""
+async def start_gmail_oauth(request: Request, redirect_uri: str | None = None):
+    """Start Gmail OAuth authentication flow.
+
+    If no redirect_uri is provided, derive one from the current request base URL
+    so this works both locally and in production (Railway).
+    """
     if not GMAIL_AVAILABLE or not gmail_service:
         raise HTTPException(status_code=500, detail="Gmail service not available")
-    
+
     try:
-        authorization_url, state = gmail_service.get_authorization_url()
+        # Derive callback URL from the incoming request if not explicitly provided
+        if not redirect_uri:
+            base = str(request.base_url).rstrip("/")
+            redirect_uri = f"{base}/gmail/callback"
+
+        authorization_url, state = gmail_service.get_authorization_url(redirect_uri=redirect_uri)
         return {
             "authorization_url": authorization_url,
             "state": state,
             "message": "Visit the authorization URL to authenticate with Gmail",
+            "redirect_uri": redirect_uri,
             "instructions": [
                 "1. Visit the authorization URL",
                 "2. Sign in with your Google account",
@@ -1066,7 +1076,7 @@ async def start_gmail_oauth():
 
 
 @app.get("/gmail/callback")
-async def gmail_oauth_callback(code: str = None, error: str = None):
+async def gmail_oauth_callback(request: Request, code: str = None, error: str = None):
     """Handle Gmail OAuth callback."""
     if error:
         raise HTTPException(status_code=400, detail=f"OAuth error: {error}")
@@ -1078,13 +1088,23 @@ async def gmail_oauth_callback(code: str = None, error: str = None):
         raise HTTPException(status_code=500, detail="Gmail service not available")
     
     try:
-        success = gmail_service.exchange_code_for_credentials(code)
+        # Use the same derived redirect_uri as in the start step to avoid mismatch
+        base = str(request.base_url).rstrip("/")
+        redirect_uri = f"{base}/gmail/callback"
+        success = gmail_service.exchange_code_for_credentials(code, redirect_uri=redirect_uri)
         if success:
+            # Expose the refresh token so the caller can store it externally if desired
+            refresh_token = None
+            try:
+                refresh_token = getattr(gmail_service.credentials, 'refresh_token', None)
+            except Exception:
+                refresh_token = None
             return {
                 "success": True,
                 "message": "Gmail OAuth authentication successful!",
                 "status": "authenticated",
-                "service_available": gmail_service.service is not None
+                "service_available": gmail_service.service is not None,
+                "refresh_token": refresh_token
             }
         else:
             raise HTTPException(status_code=500, detail="Failed to exchange code for credentials")
@@ -1107,6 +1127,15 @@ async def revoke_gmail_oauth():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to revoke credentials: {str(e)}")
+
+
+@app.get("/gmail/refresh-token")
+async def get_gmail_refresh_token():
+    """Return the current Gmail OAuth refresh token if available."""
+    if not GMAIL_AVAILABLE or not gmail_service or not gmail_service.credentials:
+        return {"available": False, "refresh_token": None}
+    token = getattr(gmail_service.credentials, 'refresh_token', None)
+    return {"available": token is not None, "refresh_token": token}
 
 
 @app.get("/gmail/diagnostics")
