@@ -6,7 +6,6 @@ Enhanced platform poster with Gmail 2FA integration and optional step-by-step sc
 import time
 import base64
 from datetime import datetime
-import base64
 import os
 from dotenv import load_dotenv
 from selenium import webdriver
@@ -41,38 +40,25 @@ class Enhanced2FAMarketplacePoster:
         self._capture_callback = capture_callback
         self.last_steps = []
 
-    def _capture_step(self, label: str) -> None:
-        if not self._capture_callback:
-            return
-        try:
-            png = self.driver.get_screenshot_as_png()
-            image_b64 = base64.b64encode(png).decode("utf-8")
-            step = {
-                "label": label,
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-                "image_base64": image_b64,
-            }
-            # store locally
-            self.last_steps.append(step)
-            # notify callback if present
-            self._capture_callback(step)
-        except Exception:
-            # Non-fatal if screenshot fails
-            pass
-        self.last_steps = []  # step-by-step screenshots (base64) and notes
-
-    def _capture_step(self, step: str, message: str) -> None:
+    def _capture_step(self, step: str, message: str = "") -> None:
         """Capture a screenshot into base64 and append to steps."""
         try:
             png = self.driver.get_screenshot_as_png()
             b64 = base64.b64encode(png).decode("utf-8")
         except Exception:
             b64 = None
-        self.last_steps.append({
-            "step": step,
-            "message": message,
-            "screenshot_b64": b64
-        })
+        item = {"step": step, "message": message, "screenshot_b64": b64}
+        self.last_steps.append(item)
+        if self._capture_callback:
+            try:
+                self._capture_callback({
+                    "label": step,
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "image_base64": b64,
+                    "note": message,
+                })
+            except Exception:
+                pass
     
     def _load_credentials(self) -> tuple[str, str]:
         """Load platform credentials from environment variables"""
