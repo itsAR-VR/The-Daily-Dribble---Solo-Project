@@ -260,7 +260,7 @@ Write a compelling product description:
             # Prefer GPT-5 for richer generation; fall back to gpt-4o
             try_model = "gpt-5"
             try:
-            response = client.chat.completions.create(
+                response = client.chat.completions.create(
                     model=try_model,
                     messages=[
                         {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
@@ -272,14 +272,14 @@ Write a compelling product description:
             except Exception:
                 response = client.chat.completions.create(
                     model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=400,
-                temperature=0.7
-            )
-            
+                    messages=[
+                        {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=400,
+                    temperature=0.7
+                )
+
             return response.choices[0].message.content.strip()
             
         except Exception as e:
