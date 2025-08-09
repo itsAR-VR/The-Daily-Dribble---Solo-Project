@@ -145,11 +145,8 @@ export default function ListingBotUI() {
 
   const startGmailOAuth = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/gmail/auth`)
-      const data = await res.json()
-      if (data.authorization_url) {
-        window.open(data.authorization_url, "_blank")
-      }
+      // Ask backend to redirect directly (avoids popup blockers and JSON parsing issues)
+      window.location.href = `${API_BASE_URL}/gmail/auth?redirect=true`
     } catch (e) {
       console.error("Failed to start Gmail OAuth", e)
     }

@@ -6,6 +6,7 @@ providing HTTP endpoints to submit Excel files and retrieve results.
 """
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Request
+from fastapi.responses import RedirectResponse
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -1063,7 +1064,7 @@ def _derive_external_base_url(request: Request) -> str:
 
 
 @app.get("/gmail/auth")
-async def start_gmail_oauth(request: Request, redirect_uri: str | None = None):
+async def start_gmail_oauth(request: Request, redirect_uri: str | None = None, redirect: bool = False):
     """Start Gmail OAuth authentication flow.
 
     If no redirect_uri is provided, derive one from the current request base URL
@@ -1079,18 +1080,21 @@ async def start_gmail_oauth(request: Request, redirect_uri: str | None = None):
             redirect_uri = f"{base}/gmail/callback"
 
         authorization_url, state = gmail_service.get_authorization_url(redirect_uri=redirect_uri)
-        return {
-            "authorization_url": authorization_url,
-            "state": state,
-            "message": "Visit the authorization URL to authenticate with Gmail",
-            "redirect_uri": redirect_uri,
-            "instructions": [
-                "1. Visit the authorization URL",
-                "2. Sign in with your Google account",
-                "3. Grant access to Gmail",
-                "4. You'll be redirected to the callback URL with an authorization code"
-            ]
-        }
+        if redirect:
+            return RedirectResponse(authorization_url, status_code=302)
+        else:
+            return {
+                "authorization_url": authorization_url,
+                "state": state,
+                "message": "Visit the authorization URL to authenticate with Gmail",
+                "redirect_uri": redirect_uri,
+                "instructions": [
+                    "1. Visit the authorization URL",
+                    "2. Sign in with your Google account",
+                    "3. Grant access to Gmail",
+                    "4. You'll be redirected to the callback URL with an authorization code"
+                ]
+            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start OAuth flow: {str(e)}")
 
