@@ -430,7 +430,9 @@ export default function ListingBotUI() {
             <Badge variant={gmailStatus === "authenticated" ? "default" : gmailStatus === "requires_auth" ? "destructive" : "secondary"}>
               {gmailStatus === "authenticated" ? "Authenticated" : gmailStatus === "requires_auth" ? "Authentication required" : "Not configured"}
             </Badge>
-            <Button size="sm" onClick={startGmailOAuth}>Connect Google</Button>
+            <Button size="sm" asChild>
+              <a href={`${API_BASE_URL}/gmail/auth?redirect=true`}>Connect Google</a>
+            </Button>
             <Button size="sm" variant="outline" onClick={fetchGmailRefreshToken}>Check Token</Button>
           </div>
           {gmailRefreshToken && (
