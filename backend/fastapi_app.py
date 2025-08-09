@@ -259,7 +259,7 @@ Write a compelling product description:
             # Prefer GPT-5 for richer generation; fall back to gpt-4o
             try_model = "gpt-5"
             try:
-                response = client.chat.completions.create(
+            response = client.chat.completions.create(
                     model=try_model,
                     messages=[
                         {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
@@ -271,13 +271,13 @@ Write a compelling product description:
             except Exception:
                 response = client.chat.completions.create(
                     model="gpt-4o",
-                    messages=[
-                        {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=400,
-                    temperature=0.7
-                )
+                messages=[
+                    {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=400,
+                temperature=0.7
+            )
             
             return response.choices[0].message.content.strip()
             
@@ -345,7 +345,7 @@ Return as comma-separated list only:
             """
             
             try:
-                response = client.chat.completions.create(
+            response = client.chat.completions.create(
                     model="gpt-5",
                     messages=[
                         {"role": "system", "content": "You are an SEO expert for marketplace listings. Generate keywords that maximize search visibility."},
@@ -357,13 +357,13 @@ Return as comma-separated list only:
             except Exception:
                 response = client.chat.completions.create(
                     model="gpt-4o",
-                    messages=[
-                        {"role": "system", "content": "You are an SEO expert for marketplace listings. Generate keywords that maximize search visibility."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=200,
-                    temperature=0.5
-                )
+                messages=[
+                    {"role": "system", "content": "You are an SEO expert for marketplace listings. Generate keywords that maximize search visibility."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=200,
+                temperature=0.5
+            )
             
             ai_keywords = [k.strip().lower() for k in response.choices[0].message.content.split(',')]
             return ai_keywords[:20]  # Limit to 20 keywords
@@ -830,31 +830,31 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                     finally:
                         driver.quit()
                 else:
-                    run_from_spreadsheet(temp_input, temp_output)
+                run_from_spreadsheet(temp_input, temp_output)
                 
                 # Read the output to check status if it exists (poster flow does not write this file)
                 if os.path.exists(temp_output):
-                    result_df = pd.read_excel(temp_output)
-                    if 'Status' in result_df.columns:
-                        status = result_df.iloc[0]['Status']
-                        if 'Error' in str(status) or 'Failed' in str(status) or 'Chrome' in str(status):
-                            browser_steps.append({
-                                "step": "submission",
-                                "status": "error",
-                                "message": str(status),
-                                "screenshot": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZmVlIi8+CiAgICA8dGV4dCB4PSIyMDAiIHk9IjE1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2Y0NCIgZm9udC1zaXplPSIxOCI+RXJyb3I8L3RleHQ+Cjwvc3ZnPg=="
-                            })
-                            success = False
-                        else:
-                            browser_steps.append({
-                                "step": "submission",
-                                "status": "success",
-                                "message": "Listing posted successfully!",
-                                "screenshot": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZWZlIi8+CiAgICA8dGV4dCB4PSIyMDAiIHk9IjE1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzRhNCIgZm9udC1zaXplPSIxOCI+U3VjY2VzcyE8L3RleHQ+Cjwvc3ZnPg=="
-                            })
-                            success = True
+                result_df = pd.read_excel(temp_output)
+                if 'Status' in result_df.columns:
+                    status = result_df.iloc[0]['Status']
+                    if 'Error' in str(status) or 'Failed' in str(status) or 'Chrome' in str(status):
+                        browser_steps.append({
+                            "step": "submission",
+                            "status": "error",
+                            "message": str(status),
+                            "screenshot": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZmVlIi8+CiAgICA8dGV4dCB4PSIyMDAiIHk9IjE1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2Y0NCIgZm9udC1zaXplPSIxOCI+RXJyb3I8L3RleHQ+Cjwvc3ZnPg=="
+                        })
+                        success = False
                     else:
+                        browser_steps.append({
+                            "step": "submission",
+                            "status": "success",
+                            "message": "Listing posted successfully!",
+                            "screenshot": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZWZlIi8+CiAgICA8dGV4dCB4PSIyMDAiIHk9IjE1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzRhNCIgZm9udC1zaXplPSIxOCI+U3VjY2VzcyE8L3RleHQ+Cjwvc3ZnPg=="
+                        })
                         success = True
+                else:
+                    success = True
             finally:
                 # Clean up temp files
                 for f in [temp_input, temp_output]:
@@ -1012,7 +1012,7 @@ async def get_gmail_status():
         "authenticated": has_credentials,
         "features": [
             "2FA code retrieval",
-            "Verification code extraction", 
+            "Verification code extraction",
             "Platform-specific email monitoring"
         ],
         "oauth_flow": {
@@ -1042,6 +1042,26 @@ async def reinitialize_gmail_service():
     }
 
 
+def _derive_external_base_url(request: Request) -> str:
+    """Best-effort external base URL behind proxies.
+
+    Prefers X-Forwarded-* headers (Railway/Vercel), falls back to request.base_url.
+    Forces https for known production hosts if scheme is missing/incorrect.
+    """
+    f_proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    f_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    scheme = f_proto or request.url.scheme or "https"
+    host = f_host or request.url.hostname
+    if host:
+        base = f"{scheme}://{host}"
+    else:
+        base = str(request.base_url).rstrip("/")
+    # Force https for Railway default domains
+    if host and host.endswith("up.railway.app"):
+        base = f"https://{host}"
+    return base.rstrip("/")
+
+
 @app.get("/gmail/auth")
 async def start_gmail_oauth(request: Request, redirect_uri: str | None = None):
     """Start Gmail OAuth authentication flow.
@@ -1055,7 +1075,7 @@ async def start_gmail_oauth(request: Request, redirect_uri: str | None = None):
     try:
         # Derive callback URL from the incoming request if not explicitly provided
         if not redirect_uri:
-            base = str(request.base_url).rstrip("/")
+            base = _derive_external_base_url(request)
             redirect_uri = f"{base}/gmail/callback"
 
         authorization_url, state = gmail_service.get_authorization_url(redirect_uri=redirect_uri)
@@ -1089,7 +1109,7 @@ async def gmail_oauth_callback(request: Request, code: str = None, error: str = 
     
     try:
         # Use the same derived redirect_uri as in the start step to avoid mismatch
-        base = str(request.base_url).rstrip("/")
+        base = _derive_external_base_url(request)
         redirect_uri = f"{base}/gmail/callback"
         success = gmail_service.exchange_code_for_credentials(code, redirect_uri=redirect_uri)
         if success:
@@ -1204,7 +1224,7 @@ async def test_gmail_search(platform: str = "gsmexchange"):
             "latest_code": latest_code,
             "search_details": {
                 "authentication_method": "OAuth 2.0",
-                "search_timeframe": "60 minutes", 
+                "search_timeframe": "60 minutes",
                 "codes_found": codes[:3]  # Return first 3 for privacy
             }
         }
@@ -1259,23 +1279,23 @@ async def debug_environment():
                     creds_data = json.load(f)
                     installed = creds_data.get("installed", {})
                     debug_info["oauth_credentials_validation"] = {
-                        "valid_json": True,
+                "valid_json": True,
                         "project_id": installed.get("project_id"),
                         "has_client_id": bool(installed.get("client_id")),
                         "has_client_secret": bool(installed.get("client_secret")),
                         "redirect_uris": installed.get("redirect_uris", [])
-                    }
-            except json.JSONDecodeError as e:
+            }
+        except json.JSONDecodeError as e:
                 debug_info["oauth_credentials_validation"] = {
-                    "valid_json": False,
-                    "error": str(e),
+                "valid_json": False,
+                "error": str(e),
                     "suggestion": "Check OAuth credentials JSON formatting"
                 }
         else:
             debug_info["oauth_credentials_validation"] = {
                 "file_missing": True,
                 "suggestion": "OAuth credentials file not found. Please ensure google_oauth_credentials.json exists."
-            }
+        }
     
     return debug_info
 
