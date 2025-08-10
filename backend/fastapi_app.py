@@ -260,7 +260,7 @@ Write a compelling product description:
             # Prefer GPT-5 for richer generation; fall back to gpt-4o
             try_model = "gpt-5"
             try:
-                response = client.chat.completions.create(
+            response = client.chat.completions.create(
                     model=try_model,
                     messages=[
                         {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
@@ -272,14 +272,14 @@ Write a compelling product description:
             except Exception:
                 response = client.chat.completions.create(
                     model="gpt-4o",
-                    messages=[
-                        {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=400,
-                    temperature=0.7
-                )
-
+                messages=[
+                    {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=400,
+                temperature=0.7
+            )
+            
             return response.choices[0].message.content.strip()
             
         except Exception as e:
@@ -348,36 +348,35 @@ Return as comma-separated list only:
             try:
             response = client.chat.completions.create(
                     model="gpt-5",
-                    messages=[
-                        {"role": "system", "content": "You are an SEO expert for marketplace listings. Generate keywords that maximize search visibility."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=200,
-                    temperature=0.5
+                messages=[
+                    {"role": "system", "content": "You are an SEO expert for marketplace listings. Generate keywords that maximize search visibility."},
+                        {"role": "user", "content": prompt},
+                ],
+                max_tokens=200,
+                    temperature=0.5,
                 )
             except Exception:
                 response = client.chat.completions.create(
                     model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You are an SEO expert for marketplace listings. Generate keywords that maximize search visibility."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=200,
-                temperature=0.5
-            )
-            
-            ai_keywords = [k.strip().lower() for k in response.choices[0].message.content.split(',')]
+                    messages=[
+                        {"role": "system", "content": "You are an SEO expert for marketplace listings. Generate keywords that maximize search visibility."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_tokens=200,
+                    temperature=0.5,
+                )
+
+            ai_keywords = [k.strip().lower() for k in response.choices[0].message.content.split(",")]
             return ai_keywords[:20]  # Limit to 20 keywords
-            
         except Exception as e:
             print(f"OpenAI API error for keywords: {e}")
     
     # Fallback keyword generation
-    keywords = []
+    keywords: List[str] = []
     
     # Add basic keywords
     if data.brand:
-        keywords.extend([data.brand.lower(), data.brand.lower().replace(' ', '')])
+        keywords.extend([data.brand.lower(), data.brand.lower().replace(" ", "")])
     if data.product_name:
         keywords.extend(data.product_name.lower().split())
     if data.model_code:
@@ -385,21 +384,22 @@ Return as comma-separated list only:
     
     # Add spec keywords
     if data.memory:
-        keywords.extend([data.memory.lower(), data.memory.lower().replace('gb', '').replace('tb', '')])
+        keywords.extend([data.memory.lower(), data.memory.lower().replace("gb", "").replace("tb", "")])
     if data.color:
         keywords.append(data.color.lower())
     if data.condition:
-        keywords.extend([data.condition.lower(), 'good condition', 'working'])
+        keywords.extend([data.condition.lower(), "good condition", "working"])
     
     # Add category keywords
     if data.category:
         keywords.append(data.category.lower())
     
     # Add common search terms
-    keywords.extend(['phone', 'mobile', 'smartphone', 'device', 'electronics'])
+    keywords.extend(["phone", "mobile", "smartphone", "device", "electronics"])
     
     # Remove duplicates and return
-    return list(set([k for k in keywords if k and len(k) > 1]))[:15]
+    unique_keywords = list(dict.fromkeys([k for k in keywords if k and len(k) > 1]))
+    return unique_keywords[:15]
 
 
 @app.get("/")
@@ -1194,10 +1194,18 @@ async def gmail_diagnostics():
             try:
                 with open(gmail_service.credentials_file, 'r') as f:
                     creds_data = json.load(f)
+                    container = None
+                    if isinstance(creds_data, dict):
+                        if "web" in creds_data:
+                            container = creds_data.get("web", {})
+                        elif "installed" in creds_data:
+                            container = creds_data.get("installed", {})
+                    if container is None:
+                        container = {}
                     diagnostics["oauth_files"]["credentials_valid"] = {
-                        "has_client_id": bool(creds_data.get("installed", {}).get("client_id")),
-                        "has_client_secret": bool(creds_data.get("installed", {}).get("client_secret")),
-                        "project_id": creds_data.get("installed", {}).get("project_id")
+                        "has_client_id": bool(container.get("client_id")),
+                        "has_client_secret": bool(container.get("client_secret")),
+                        "project_id": container.get("project_id")
                     }
             except Exception as e:
                 diagnostics["oauth_files"]["credentials_error"] = str(e)
@@ -1281,13 +1289,20 @@ async def debug_environment():
             try:
                 with open(gmail_service.credentials_file, 'r') as f:
                     creds_data = json.load(f)
-                    installed = creds_data.get("installed", {})
+                    container = None
+                    if isinstance(creds_data, dict):
+                        if "web" in creds_data:
+                            container = creds_data.get("web", {})
+                        elif "installed" in creds_data:
+                            container = creds_data.get("installed", {})
+                    if container is None:
+                        container = {}
                     debug_info["oauth_credentials_validation"] = {
                 "valid_json": True,
-                        "project_id": installed.get("project_id"),
-                        "has_client_id": bool(installed.get("client_id")),
-                        "has_client_secret": bool(installed.get("client_secret")),
-                        "redirect_uris": installed.get("redirect_uris", [])
+                        "project_id": container.get("project_id"),
+                        "has_client_id": bool(container.get("client_id")),
+                        "has_client_secret": bool(container.get("client_secret")),
+                        "redirect_uris": container.get("redirect_uris", [])
             }
         except json.JSONDecodeError as e:
                 debug_info["oauth_credentials_validation"] = {
