@@ -932,6 +932,141 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 self._capture_step("remarks_entered", "Entered remarks with memory info")
             except Exception as e:
                 print(f"⚠️  Could not enter remarks: {e}")
+
+            # Optional but commonly required dropdowns: Memory, Color, Market Spec, SIM Lock
+            try:
+                desired_memory = str(row.get("memory", "")).strip()
+                if desired_memory:
+                    for name in ["selMemory", "memory", "mem", "selMem"]:
+                        try:
+                            memory_select = driver.find_element(By.NAME, name)
+                            Select(memory_select).select_by_visible_text(desired_memory)
+                            print(f"✅ Memory selected: {desired_memory}")
+                            break
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+
+            try:
+                desired_color = str(row.get("color", "")).strip()
+                if desired_color:
+                    for name in ["selColor", "color", "selColour", "colour"]:
+                        try:
+                            color_select = driver.find_element(By.NAME, name)
+                            Select(color_select).select_by_visible_text(desired_color)
+                            print(f"✅ Color selected: {desired_color}")
+                            break
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+
+            try:
+                desired_market = str(row.get("market_spec", row.get("market", "US"))).strip()
+                mapping = {"US": "US", "Euro": "Euro", "UK": "UK", "Asia": "Asia", "Arabic": "Arabic", "Other": "Other"}
+                desired_market = mapping.get(desired_market, desired_market)
+                for name in ["selMarket", "market", "selSpec", "marketSpec", "selMarketSpec"]:
+                    try:
+                        market_select = driver.find_element(By.NAME, name)
+                        Select(market_select).select_by_visible_text(desired_market)
+                        print(f"✅ Market Spec selected: {desired_market}")
+                        break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+            try:
+                desired_sim = str(row.get("sim_lock_status", row.get("sim_lock", "Unlocked"))).strip()
+                for name in ["selSim", "selSimLock", "simlock", "SIM", "SIM Lock"]:
+                    try:
+                        sim_select = driver.find_element(By.NAME, name)
+                        Select(sim_select).select_by_visible_text(desired_sim)
+                        print(f"✅ SIM Lock selected: {desired_sim}")
+                        break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+            # Carrier input if present
+            try:
+                carrier_value = str(row.get("carrier", "")).strip()
+                if carrier_value:
+                    for locator in [
+                        (By.NAME, "carrier"),
+                        (By.CSS_SELECTOR, "input[name*='carrier' i]")
+                    ]:
+                        try:
+                            carrier_field = driver.find_element(*locator)
+                            carrier_field.clear()
+                            carrier_field.send_keys(carrier_value)
+                            print(f"✅ Carrier entered: {carrier_value}")
+                            break
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+
+            # Country / State
+            try:
+                country_value = str(row.get("country", "United States")).strip()
+                for name in ["country", "selCountry"]:
+                    try:
+                        country_select = driver.find_element(By.NAME, name)
+                        Select(country_select).select_by_visible_text(country_value)
+                        print(f"✅ Country selected: {country_value}")
+                        break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+            try:
+                state_value = str(row.get("state", "Florida")).strip()
+                for locator in [
+                    (By.NAME, "state"),
+                    (By.CSS_SELECTOR, "input[name*='state' i]")
+                ]:
+                    try:
+                        state_field = driver.find_element(*locator)
+                        state_field.clear()
+                        state_field.send_keys(state_value)
+                        print(f"✅ State entered: {state_value}")
+                        break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+            # Payment checkboxes: tick at least Wire TT and Paypal if visible
+            try:
+                labels_to_check = ["wire tt", "paypal"]
+                label_elements = driver.find_elements(By.XPATH, "//label")
+                for lbl in label_elements:
+                    try:
+                        txt = (lbl.text or "").strip().lower()
+                        if any(k in txt for k in labels_to_check):
+                            # Find associated input
+                            input_id = lbl.get_attribute("for")
+                            box = None
+                            if input_id:
+                                try:
+                                    box = driver.find_element(By.ID, input_id)
+                                except Exception:
+                                    box = None
+                            if not box:
+                                # Try preceding-sibling input
+                                try:
+                                    box = lbl.find_element(By.XPATH, ".//preceding::input[@type='checkbox'][1]")
+                                except Exception:
+                                    box = None
+                            if box and not box.is_selected():
+                                driver.execute_script("arguments[0].click();", box)
+                print("✅ Payment methods selected where available")
+            except Exception:
+                pass
             
             # Take screenshot before submitting
             self._capture_step("form_filled", "Form fields filled before submit")
@@ -1088,7 +1223,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 except Exception:
                     pass
                 # Give the site time to persist/redirect
-                time.sleep(12)
+                time.sleep(18)
 
                 # Basic error sniffing on the immediate response page
                 current_url = driver.current_url
@@ -1101,6 +1236,17 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     print("❌ Error detected in response")
                     self._capture_step("listing_error", "Form submission returned error")
                     return "Error: Form submission failed - check required fields"
+
+                # Detect moderation/review acknowledgement from Cellpex
+                review_indicators = [
+                    "screened by a proprietary fraud prevention system",
+                    "reviewed in 24 hours",
+                    "reviewed within 24 hours"
+                ]
+                if any(ind in page_text for ind in review_indicators):
+                    print("🕒 Listing submitted and pending Cellpex review")
+                    self._capture_step("listing_pending_review", "Submission accepted; pending moderation")
+                    return "Success: Submitted for review (may appear after moderation)"
 
                 # Always verify on inventory/summary pages before declaring success
                 self._capture_step("inventory_check_start", f"Post-submit at {current_url}")
