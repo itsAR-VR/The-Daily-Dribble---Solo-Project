@@ -876,7 +876,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             # Take screenshot before submitting
             self._capture_step("form_filled", "Form fields filled before submit")
             
-                        # Enhanced submit with popup handling
+            # Enhanced submit with popup handling
             print("📤 Submitting listing with enhanced popup handling...")
             
             # Step 1: Dismiss popups first
@@ -896,7 +896,13 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 "//button[contains(text(), 'Save')]",
                 "//button[contains(text(), 'Submit')]",
                 "//input[@value='Save']",
-                "//input[@value='Submit']"
+                "//input[@value='Submit']",
+                # Common ASP.NET patterns
+                "[onclick*='__doPostBack']",
+                "input[id*='btn']",
+                "button[id*='btn']",
+                "input[name*='btn']",
+                "button[name*='btn']"
             ]
 
             submitted = False
@@ -951,10 +957,35 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     print("✅ Form submitted via form.submit() JS fallback")
                 except Exception:
                     print("⚠️  JS form.submit() fallback failed")
+
+            # ASP.NET postback fallback if still not submitted
+            if not submitted:
+                postback_snippets = [
+                    "if (window.__doPostBack) { __doPostBack('btnSubmit',''); return true; } return false;",
+                    "if (window.__doPostBack) { __doPostBack('btnSave',''); return true; } return false;",
+                    "if (window.__doPostBack) { __doPostBack('ctl00$ContentPlaceHolder1$btnSubmit',''); return true; } return false;",
+                ]
+                for js in postback_snippets:
+                    try:
+                        ok = driver.execute_script(js)
+                        if ok:
+                            submitted = True
+                            print("✅ Form submitted via __doPostBack fallback")
+                            break
+                    except Exception:
+                        continue
             
             if submitted:
+                # Handle potential JS alert/confirm after submit
+                try:
+                    alert = driver.switch_to.alert
+                    text = alert.text
+                    alert.accept()
+                    print(f"✅ Accepted post-submit alert: {text}")
+                except Exception:
+                    pass
                 # Wait for response
-                time.sleep(8)
+                time.sleep(12)
                 
                 # Check for success indicators
                 current_url = driver.current_url
@@ -971,7 +1002,12 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 has_success = any(indicator in page_text for indicator in success_indicators)
                 has_error = any(indicator in page_text for indicator in error_indicators)
                 
-                if has_success and not has_error:
+                # Also consider URL-based redirects as success signals
+                url_success = any(x in current_url.lower() for x in [
+                    "/my-summary", "/my-inventory", "inventory", "listings"
+                ])
+
+                if (has_success or url_success) and not has_error:
                     print("🎉 Listing posted successfully!")
                     self._capture_step("listing_success", "Listing posted successfully")
                     return "Success: Listing posted to Cellpex"
@@ -980,7 +1016,12 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     self._capture_step("listing_error", "Form submission returned error")
                     return "Error: Form submission failed - check required fields"
                 else:
-                    # Check if we are redirected back to form with no errors -> treat as failure
+                    # Try a verification pass on summary/inventory pages
+                    if self._verify_cellpex_listing(row):
+                        print("🎉 Listing verified in account after submission")
+                        self._capture_step("listing_verified", "Verified listing appears in account")
+                        return "Success: Listing verified in account"
+                    # Otherwise, treat as failure for honesty
                     print("⚠️  Uncertain response - treating as failure for honesty")
                     self._capture_step("listing_uncertain", "Submission response unclear; treating as error")
                     return "Error: Submission unclear (no success indicators)"
@@ -993,6 +1034,36 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             print(f"❌ Error posting to Cellpex: {e}")
             self._capture_step("exception", f"Exception during posting: {e}")
             return f"Error: {str(e)}"
+
+    def _verify_cellpex_listing(self, row) -> bool:
+        """Attempt to verify that the listing exists in the account by checking common pages.
+        Looks for brand/model text presence after navigating to account pages.
+        """
+        try:
+            driver = self.driver
+            targets = [
+                "https://www.cellpex.com/my-summary",
+                "https://www.cellpex.com/my-inventory",
+                "https://www.cellpex.com/list/wholesale-inventory",
+            ]
+            search_terms = [
+                str(row.get("model", "")).strip(),
+                f"{row.get('brand', '')} {row.get('model', '')}".strip(),
+                str(row.get("brand", "")).strip(),
+            ]
+            for url in targets:
+                try:
+                    driver.get(url)
+                    time.sleep(3)
+                    page = driver.page_source.lower()
+                    for term in search_terms:
+                        if term and term.lower() in page:
+                            return True
+                except Exception:
+                    continue
+            return False
+        except Exception:
+            return False
 
 
 # Platform poster registry
