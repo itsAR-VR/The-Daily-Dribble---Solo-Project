@@ -260,7 +260,7 @@ Write a compelling product description:
             # Prefer GPT-5 for richer generation; fall back to gpt-4o
             try_model = "gpt-5"
             try:
-            response = client.chat.completions.create(
+                response = client.chat.completions.create(
                     model=try_model,
                     messages=[
                         {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
@@ -272,13 +272,13 @@ Write a compelling product description:
             except Exception:
                 response = client.chat.completions.create(
                     model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=400,
-                temperature=0.7
-            )
+                    messages=[
+                        {"role": "system", "content": "You are a professional marketplace listing writer. Create compelling, accurate product descriptions that help items sell."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=400,
+                    temperature=0.7
+                )
             
             return response.choices[0].message.content.strip()
             
@@ -346,13 +346,13 @@ Return as comma-separated list only:
             """
             
             try:
-            response = client.chat.completions.create(
+                response = client.chat.completions.create(
                     model="gpt-5",
-                messages=[
-                    {"role": "system", "content": "You are an SEO expert for marketplace listings. Generate keywords that maximize search visibility."},
+                    messages=[
+                        {"role": "system", "content": "You are an SEO expert for marketplace listings. Generate keywords that maximize search visibility."},
                         {"role": "user", "content": prompt},
-                ],
-                max_tokens=200,
+                    ],
+                    max_tokens=200,
                     temperature=0.5,
                 )
             except Exception:
@@ -831,21 +831,21 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                     finally:
                         driver.quit()
                 else:
-                run_from_spreadsheet(temp_input, temp_output)
+                    run_from_spreadsheet(temp_input, temp_output)
                 
                 # Read the output to check status if it exists (poster flow does not write this file)
                 if os.path.exists(temp_output):
-                result_df = pd.read_excel(temp_output)
-                if 'Status' in result_df.columns:
-                    status = result_df.iloc[0]['Status']
-                    if 'Error' in str(status) or 'Failed' in str(status) or 'Chrome' in str(status):
-                        browser_steps.append({
+                    result_df = pd.read_excel(temp_output)
+                    if 'Status' in result_df.columns:
+                        status = result_df.iloc[0]['Status']
+                        if 'Error' in str(status) or 'Failed' in str(status) or 'Chrome' in str(status):
+                            browser_steps.append({
                             "step": "submission",
                             "status": "error",
                             "message": str(status),
                             "screenshot": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZmVlIi8+CiAgICA8dGV4dCB4PSIyMDAiIHk9IjE1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2Y0NCIgZm9udC1zaXplPSIxOCI+RXJyb3I8L3RleHQ+Cjwvc3ZnPg=="
                         })
-                        success = False
+                            success = False
                     else:
                         browser_steps.append({
                             "step": "submission",
@@ -1298,23 +1298,23 @@ async def debug_environment():
                     if container is None:
                         container = {}
                     debug_info["oauth_credentials_validation"] = {
-                "valid_json": True,
+                        "valid_json": True,
                         "project_id": container.get("project_id"),
                         "has_client_id": bool(container.get("client_id")),
                         "has_client_secret": bool(container.get("client_secret")),
-                        "redirect_uris": container.get("redirect_uris", [])
-            }
-        except json.JSONDecodeError as e:
+                        "redirect_uris": container.get("redirect_uris", []),
+                    }
+            except json.JSONDecodeError as e:
                 debug_info["oauth_credentials_validation"] = {
-                "valid_json": False,
-                "error": str(e),
-                    "suggestion": "Check OAuth credentials JSON formatting"
+                    "valid_json": False,
+                    "error": str(e),
+                    "suggestion": "Check OAuth credentials JSON formatting",
                 }
         else:
             debug_info["oauth_credentials_validation"] = {
                 "file_missing": True,
-                "suggestion": "OAuth credentials file not found. Please ensure google_oauth_credentials.json exists."
-        }
+                "suggestion": "OAuth credentials file not found. Please ensure google_oauth_credentials.json exists.",
+            }
     
     return debug_info
 
