@@ -767,6 +767,71 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             except Exception as e:
                 print(f"⚠️  Could not enter quantity: {e}")
             
+            # Price (try multiple common selectors)
+            try:
+                price_value = str(row.get("price", "")).strip()
+                if price_value:
+                    price_selectors = [
+                        (By.NAME, "txtPrice"),
+                        (By.NAME, "txtAsk"),
+                        (By.NAME, "txtAmount"),
+                        (By.CSS_SELECTOR, "input[name*='price' i]"),
+                    ]
+                    price_field = None
+                    for by, sel in price_selectors:
+                        try:
+                            price_field = driver.find_element(by, sel)
+                            break
+                        except Exception:
+                            continue
+                    if price_field:
+                        price_field.clear()
+                        price_field.send_keys(price_value)
+                        print(f"✅ Price entered: {price_value}")
+                        self._capture_step("price_entered", f"Price: {price_value}")
+            except Exception as e:
+                print(f"⚠️  Could not enter price: {e}")
+
+            # Currency (try select: selCurrency or similar)
+            try:
+                currency = str(row.get("currency", "USD")).upper()
+                currency_select = None
+                for name in ["selCurrency", "selCur", "selCurr"]:
+                    try:
+                        currency_select = driver.find_element(By.NAME, name)
+                        break
+                    except Exception:
+                        continue
+                if currency_select:
+                    Select(currency_select).select_by_visible_text(currency)
+                    print(f"✅ Currency selected: {currency}")
+                    self._capture_step("currency_selected", f"Currency: {currency}")
+            except Exception as e:
+                print(f"⚠️  Could not select currency: {e}")
+
+            # Condition (optional, try a few names)
+            try:
+                condition = str(row.get("condition", "Used"))
+                cond_select = None
+                for name in ["selCondition", "selCond", "condition"]:
+                    try:
+                        cond_select = driver.find_element(By.NAME, name)
+                        break
+                    except Exception:
+                        continue
+                if cond_select:
+                    try:
+                        Select(cond_select).select_by_visible_text(condition)
+                    except Exception:
+                        try:
+                            Select(cond_select).select_by_index(1)
+                        except Exception:
+                            pass
+                    print(f"✅ Condition selected: {condition}")
+                    self._capture_step("condition_selected", f"Condition: {condition}")
+            except Exception as e:
+                print(f"⚠️  Could not select condition: {e}")
+
             # Brand/Model description (txtBrandModel) - Skip if autocomplete issues
             try:
                 # Use JavaScript to avoid autocomplete issues
@@ -875,10 +940,21 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     print("✅ Form submitted using Enter key")
                 except:
                     pass
+
+            # Final fallback: submit the nearest form via JavaScript
+            if not submitted:
+                try:
+                    driver.execute_script(
+                        "var f = document.querySelector('form'); if (f) { f.submit(); return true } else { return false }"
+                    )
+                    submitted = True
+                    print("✅ Form submitted via form.submit() JS fallback")
+                except Exception:
+                    print("⚠️  JS form.submit() fallback failed")
             
             if submitted:
                 # Wait for response
-                time.sleep(6)
+                time.sleep(8)
                 
                 # Check for success indicators
                 current_url = driver.current_url
