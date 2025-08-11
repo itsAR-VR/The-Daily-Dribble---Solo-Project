@@ -1048,7 +1048,6 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     try:
                         txt = (lbl.text or "").strip().lower()
                         if any(k in txt for k in labels_to_check):
-                            # Find associated input
                             input_id = lbl.get_attribute("for")
                             box = None
                             if input_id:
@@ -1057,13 +1056,14 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                                 except Exception:
                                     box = None
                             if not box:
-                                # Try preceding-sibling input
                                 try:
                                     box = lbl.find_element(By.XPATH, ".//preceding::input[@type='checkbox'][1]")
                                 except Exception:
                                     box = None
                             if box and not box.is_selected():
                                 driver.execute_script("arguments[0].click();", box)
+                    except Exception:
+                        continue
                 print("✅ Payment methods selected where available")
             except Exception:
                 pass
