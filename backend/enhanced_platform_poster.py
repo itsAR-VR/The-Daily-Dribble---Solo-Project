@@ -986,56 +986,32 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     print(f"✅ Accepted post-submit alert: {text}")
                 except Exception:
                     pass
-                # Wait for response
+                # Give the site time to persist/redirect
                 time.sleep(12)
-                
-                # Check for success indicators
+
+                # Basic error sniffing on the immediate response page
                 current_url = driver.current_url
                 page_text = driver.page_source.lower()
-                
-                success_indicators = [
-                    "successfully posted",
-                    "posted successfully",
-                    "offer has been posted",
-                    "your offer has been posted",
-                    "your listing has been submitted",
-                    "inventory saved",
-                    "saved successfully",
-                    "created successfully"
-                ]
                 error_indicators = [
-                    "error", "failed", "invalid", "required", "please fill", "must select"
+                    "error", "failed", "invalid", "required", "please fill", "must select", "already exists"
                 ]
-                
-                has_success = any(indicator in page_text for indicator in success_indicators)
                 has_error = any(indicator in page_text for indicator in error_indicators)
-                
-                # Also consider URL-based redirects as success signals, but only if we left the form page
-                # Avoid false positives like staying on "/list/wholesale-inventory"
-                lower_url = current_url.lower()
-                left_form_page = (lower_url != form_url.lower()) and ("/list/wholesale-inventory" not in lower_url)
-                url_success = left_form_page and any(x in lower_url for x in [
-                    "/my-summary", "/my-inventory", "/wholesale-search-results", "/my-", "/inventory/"
-                ])
-
-                if (has_success or url_success) and not has_error:
-                    print("🎉 Listing posted successfully!")
-                    self._capture_step("listing_success", "Listing posted successfully")
-                    return "Success: Listing posted to Cellpex"
-                elif has_error:
+                if has_error:
                     print("❌ Error detected in response")
                     self._capture_step("listing_error", "Form submission returned error")
                     return "Error: Form submission failed - check required fields"
+
+                # Always verify on inventory/summary pages before declaring success
+                self._capture_step("inventory_check_start", f"Post-submit at {current_url}")
+                verified = self._verify_cellpex_listing(row)
+                if verified:
+                    print("🎉 Listing verified in account after submission")
+                    self._capture_step("listing_verified", "Verified listing appears in account")
+                    return "Success: Listing verified in account"
                 else:
-                    # Try a verification pass on summary/inventory pages
-                    if self._verify_cellpex_listing(row):
-                        print("🎉 Listing verified in account after submission")
-                        self._capture_step("listing_verified", "Verified listing appears in account")
-                        return "Success: Listing verified in account"
-                    # Otherwise, treat as failure for honesty
-                    print("⚠️  Uncertain response - treating as failure for honesty")
-                    self._capture_step("listing_uncertain", "Submission response unclear; treating as error")
-                    return "Error: Submission unclear (no success indicators)"
+                    print("❌ Could not verify listing in account after submission")
+                    self._capture_step("listing_not_found", "Listing not found in inventory after submit")
+                    return "Error: Submission completed but listing not found in inventory (treated as failure)"
             else:
                 print("❌ Could not submit form")
                 self._capture_step("no_submit", "Could not find/activate submit control")
@@ -1047,29 +1023,53 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             return f"Error: {str(e)}"
 
     def _verify_cellpex_listing(self, row) -> bool:
-        """Attempt to verify that the listing exists in the account by checking common pages.
-        Looks for brand/model text presence after navigating to account pages.
+        """Verify that the listing exists in the account by visiting inventory/summary pages
+        and checking for strong signals (brand AND model present on the page, optionally price).
         """
         try:
             driver = self.driver
+            brand = str(row.get("brand", "")).strip()
+            model = str(row.get("model", "")).strip()
+            price = str(row.get("price", "")).strip()
+            currency = str(row.get("currency", "")).strip().upper()
+
+            # Pages to try for verification
             targets = [
-                "https://www.cellpex.com/my-summary",
                 "https://www.cellpex.com/my-inventory",
-                "https://www.cellpex.com/list/wholesale-inventory",
+                "https://www.cellpex.com/my-summary",
                 "https://www.cellpex.com/wholesale-search-results",
+                "https://www.cellpex.com/list/wholesale-inventory",
             ]
-            search_terms = [
-                str(row.get("model", "")).strip(),
-                f"{row.get('brand', '')} {row.get('model', '')}".strip(),
-                str(row.get("brand", "")).strip(),
-            ]
+
+            # Helper to assert presence of multiple tokens
+            def contains_all_tokens(text: str, tokens: list[str]) -> bool:
+                text_l = text.lower()
+                return all(t and t.lower() in text_l for t in tokens)
+
+            # Build token sets to look for
+            token_sets = []
+            if brand and model:
+                token_sets.append([brand, model])
+            elif brand:
+                token_sets.append([brand])
+            elif model:
+                token_sets.append([model])
+            # Add price pattern if available (don't rely solely on it)
+            if price:
+                token_sets.append([price])
+            if price and currency:
+                token_sets.append([currency, price])
+
             for url in targets:
                 try:
                     driver.get(url)
                     time.sleep(3)
-                    page = driver.page_source.lower()
-                    for term in search_terms:
-                        if term and term.lower() in page:
+                    page = driver.page_source
+                    # Quick capture for diagnostics
+                    self._capture_step("inventory_page", f"Checked {url}")
+                    # If any strong token set matches, consider verified
+                    for tokens in token_sets:
+                        if contains_all_tokens(page, tokens):
                             return True
                 except Exception:
                     continue

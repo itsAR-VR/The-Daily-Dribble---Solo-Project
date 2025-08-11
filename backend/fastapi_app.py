@@ -885,6 +885,13 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
             response_message = locals().get('result_msg') if locals().get('poster_used') else None
         except Exception:
             response_message = None
+
+        # If enhanced poster was used, force success only on explicit Success from poster
+        if locals().get('poster_used'):
+            try:
+                success = bool(response_message and str(response_message).lower().startswith("success"))
+            except Exception:
+                success = False
         return {
             "success": success,
             "message": response_message or "Visual automation completed",
