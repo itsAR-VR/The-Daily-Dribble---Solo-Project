@@ -906,6 +906,8 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             ]
 
             submitted = False
+            # Track the form URL so we can detect a real redirect after submit
+            form_url = driver.current_url
             for selector in submit_selectors:
                 try:
                     if selector.startswith("//"):
@@ -992,8 +994,14 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 page_text = driver.page_source.lower()
                 
                 success_indicators = [
-                    "success", "created", "saved", "posted", "added",
-                    "your listing has been submitted", "inventory saved"
+                    "successfully posted",
+                    "posted successfully",
+                    "offer has been posted",
+                    "your offer has been posted",
+                    "your listing has been submitted",
+                    "inventory saved",
+                    "saved successfully",
+                    "created successfully"
                 ]
                 error_indicators = [
                     "error", "failed", "invalid", "required", "please fill", "must select"
@@ -1002,9 +1010,12 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 has_success = any(indicator in page_text for indicator in success_indicators)
                 has_error = any(indicator in page_text for indicator in error_indicators)
                 
-                # Also consider URL-based redirects as success signals
-                url_success = any(x in current_url.lower() for x in [
-                    "/my-summary", "/my-inventory", "inventory", "listings"
+                # Also consider URL-based redirects as success signals, but only if we left the form page
+                # Avoid false positives like staying on "/list/wholesale-inventory"
+                lower_url = current_url.lower()
+                left_form_page = (lower_url != form_url.lower()) and ("/list/wholesale-inventory" not in lower_url)
+                url_success = left_form_page and any(x in lower_url for x in [
+                    "/my-summary", "/my-inventory", "/wholesale-search-results", "/my-", "/inventory/"
                 ])
 
                 if (has_success or url_success) and not has_error:
@@ -1045,6 +1056,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 "https://www.cellpex.com/my-summary",
                 "https://www.cellpex.com/my-inventory",
                 "https://www.cellpex.com/list/wholesale-inventory",
+                "https://www.cellpex.com/wholesale-search-results",
             ]
             search_terms = [
                 str(row.get("model", "")).strip(),

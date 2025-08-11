@@ -820,6 +820,7 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                                 "model": listing_data.model_code,
                                 "quantity": listing_data.quantity,
                                 "price": listing_data.price,
+                                "currency": listing_data.currency,
                                 "condition": listing_data.condition,
                                 "memory": listing_data.memory,
                                 "color": listing_data.color,
@@ -827,7 +828,14 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                             }
                             result_msg = poster.post_listing(row_like)
                             browser_steps.extend(poster.last_steps)
+                            # Be strict: only mark success if poster explicitly returned Success
                             success = bool(result_msg and result_msg.lower().startswith("success"))
+                            # Attach poster message to steps for UI clarity
+                            browser_steps.append({
+                                "step": "poster_result",
+                                "status": "success" if success else "error",
+                                "message": result_msg or "No result returned from poster"
+                            })
                     finally:
                         driver.quit()
                 else:
@@ -871,9 +879,15 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
             })
             success = False
         
+        # Prefer the poster's message when available to avoid misleading success text
+        response_message = None
+        try:
+            response_message = locals().get('result_msg') if locals().get('poster_used') else None
+        except Exception:
+            response_message = None
         return {
             "success": success,
-            "message": "Visual automation completed",
+            "message": response_message or "Visual automation completed",
             "platform": platform,
             "product": listing_data.product_name,
             "enriched_description": listing_data.description,
