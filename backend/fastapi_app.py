@@ -806,14 +806,14 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                         except Exception:
                             # Fallback when backend is packaged as a module
                             from backend.enhanced_platform_poster import ENHANCED_POSTERS
-
                         poster = ENHANCED_POSTERS[platform](driver)
                         # Login + post minimal listing
+                        poster_used = True
+                        success = False
+                        result_msg = None
                         login_ok = poster.login_with_2fa()
                         browser_steps.extend(poster.last_steps)
-                        if not login_ok:
-                            success = False
-                        else:
+                        if login_ok:
                             # Build a minimal row-like dict
                             row_like = {
                                 "brand": listing_data.brand,
@@ -827,7 +827,7 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                             }
                             result_msg = poster.post_listing(row_like)
                             browser_steps.extend(poster.last_steps)
-                            success = result_msg.startswith("Success")
+                            success = bool(result_msg and result_msg.lower().startswith("success"))
                     finally:
                         driver.quit()
                 else:
@@ -847,15 +847,15 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                         })
                             success = False
                     else:
-                        browser_steps.append({
-                            "step": "submission",
-                            "status": "success",
-                            "message": "Listing posted successfully!",
-                            "screenshot": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZWZlIi8+CiAgICA8dGV4dCB4PSIyMDAiIHk9IjE1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzRhNCIgZm9udC1zaXplPSIxOCI+U3VjY2VzcyE8L3RleHQ+Cjwvc3ZnPg=="
-                        })
-                        success = True
-                else:
-                    success = True
+                        # Only mark success here if we were NOT using the enhanced poster
+                        if not locals().get('poster_used'):
+                            browser_steps.append({
+                                "step": "submission",
+                                "status": "success",
+                                "message": "Listing posted successfully!",
+                                "screenshot": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZWZlIi8+CiAgICA8dGV4dCB4PSIyMDAiIHk9IjE1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzRhNCIgZm9udC1zaXplPSIxOCI+U3VjY2VzcyE8L3RleHQ+Cjwvc3ZnPg=="
+                            })
+                            success = True
             finally:
                 # Clean up temp files
                 for f in [temp_input, temp_output]:
@@ -1064,7 +1064,7 @@ def _derive_external_base_url(request: Request) -> str:
 
 
 @app.get("/gmail/auth")
-async def start_gmail_oauth(request: Request, redirect_uri: str | None = None, redirect: bool = False):
+async def start_gmail_oauth(request: Request, redirect_uri: Optional[str] = None, redirect: bool = False):
     """Start Gmail OAuth authentication flow.
 
     If no redirect_uri is provided, derive one from the current request base URL
@@ -1100,7 +1100,7 @@ async def start_gmail_oauth(request: Request, redirect_uri: str | None = None, r
 
 
 @app.get("/gmail/callback")
-async def gmail_oauth_callback(request: Request, code: str = None, error: str = None):
+async def gmail_oauth_callback(request: Request, code: Optional[str] = None, error: Optional[str] = None):
     """Handle Gmail OAuth callback."""
     if error:
         raise HTTPException(status_code=400, detail=f"OAuth error: {error}")

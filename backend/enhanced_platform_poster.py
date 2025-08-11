@@ -878,14 +878,19 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             
             if submitted:
                 # Wait for response
-                time.sleep(5)
+                time.sleep(6)
                 
                 # Check for success indicators
                 current_url = driver.current_url
                 page_text = driver.page_source.lower()
                 
-                success_indicators = ["success", "created", "saved", "posted", "added"]
-                error_indicators = ["error", "failed", "invalid", "required"]
+                success_indicators = [
+                    "success", "created", "saved", "posted", "added",
+                    "your listing has been submitted", "inventory saved"
+                ]
+                error_indicators = [
+                    "error", "failed", "invalid", "required", "please fill", "must select"
+                ]
                 
                 has_success = any(indicator in page_text for indicator in success_indicators)
                 has_error = any(indicator in page_text for indicator in error_indicators)
@@ -899,9 +904,10 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     self._capture_step("listing_error", "Form submission returned error")
                     return "Error: Form submission failed - check required fields"
                 else:
-                    print("⚠️  Uncertain response - manual verification needed")
-                    self._capture_step("listing_uncertain", "Submission response unclear")
-                    return "Uncertain: Manual verification needed"
+                    # Check if we are redirected back to form with no errors -> treat as failure
+                    print("⚠️  Uncertain response - treating as failure for honesty")
+                    self._capture_step("listing_uncertain", "Submission response unclear; treating as error")
+                    return "Error: Submission unclear (no success indicators)"
             else:
                 print("❌ Could not submit form")
                 self._capture_step("no_submit", "Could not find/activate submit control")
