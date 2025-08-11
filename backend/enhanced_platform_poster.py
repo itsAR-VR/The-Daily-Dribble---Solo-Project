@@ -832,19 +832,79 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             except Exception as e:
                 print(f"⚠️  Could not select condition: {e}")
 
-            # Brand/Model description (txtBrandModel) - Skip if autocomplete issues
+            # Brand/Model description (txtBrandModel) with autocomplete selection
             try:
-                # Use JavaScript to avoid autocomplete issues
                 product_name = f"{row.get('brand', 'Apple')} {row.get('model', 'iPhone 14 Pro')}"
-                driver.execute_script("""
-                    var field = document.querySelector('[name="txtBrandModel"]');
-                    if (field) {
-                        field.value = arguments[0];
-                        field.dispatchEvent(new Event('change'));
-                    }
-                """, product_name)
-                print(f"✅ Product name set via JavaScript: {product_name}")
-                self._capture_step("product_name_set", f"Product name: {product_name}")
+                # Prefer interactive typing to trigger autocomplete
+                model_field = None
+                for locator in [
+                    (By.NAME, "txtBrandModel"),
+                    (By.ID, "txtBrandModel"),
+                    (By.CSS_SELECTOR, "input[name*='BrandModel' i]")
+                ]:
+                    try:
+                        model_field = driver.find_element(*locator)
+                        break
+                    except Exception:
+                        continue
+                if model_field:
+                    model_field.clear()
+                    model_field.click()
+                    # Type slowly to trigger suggestions
+                    for chunk in product_name.split(" "):
+                        model_field.send_keys(chunk + " ")
+                        time.sleep(0.3)
+                    time.sleep(1.5)
+                    # Try to pick a suggestion item
+                    suggestion_xpaths = [
+                        "//ul[contains(@class,'ui-autocomplete')]//li[1]",
+                        "//li[contains(@class,'ui-menu-item')][1]",
+                        "//div[contains(@class,'autocomplete') or contains(@class,'suggest') ]//li[1]"
+                    ]
+                    picked = False
+                    for sx in suggestion_xpaths:
+                        try:
+                            sug = driver.find_element(By.XPATH, sx)
+                            if sug.is_displayed():
+                                driver.execute_script("arguments[0].scrollIntoView({behavior: 'instant', block: 'center'});", sug)
+                                time.sleep(0.2)
+                                driver.execute_script("arguments[0].click();", sug)
+                                picked = True
+                                break
+                        except Exception:
+                            continue
+                    if not picked:
+                        # Fallback to JS set + change/blur events
+                        driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input')); arguments[0].dispatchEvent(new Event('change')); arguments[0].blur();", model_field, product_name)
+                    print(f"✅ Product name set: {product_name} {'(picked suggestion)' if picked else '(direct)'}")
+                    self._capture_step("product_name_set", f"Product name: {product_name}")
+                    # Inspect potential hidden fields that autocomplete may set
+                    try:
+                        hidden_fields = driver.find_elements(By.CSS_SELECTOR, "input[type='hidden']")
+                        hidden_summary = []
+                        for hf in hidden_fields:
+                            try:
+                                name = hf.get_attribute('name') or hf.get_attribute('id')
+                                val = (hf.get_attribute('value') or '')[:40]
+                                if name and val:
+                                    hidden_summary.append(f"{name}={val}")
+                            except Exception:
+                                continue
+                        if hidden_summary:
+                            self._capture_step("hidden_fields", ", ".join(hidden_summary[:8]))
+                    except Exception:
+                        pass
+                else:
+                    # Last resort JS injection
+                    driver.execute_script("""
+                        var field = document.querySelector('[name="txtBrandModel"]');
+                        if (field) {
+                            field.value = arguments[0];
+                            field.dispatchEvent(new Event('change'));
+                        }
+                    """, product_name)
+                    print(f"✅ Product name set via JavaScript: {product_name}")
+                    self._capture_step("product_name_set", f"Product name: {product_name}")
             except Exception as e:
                 print(f"⚠️  Skipping product name due to: {e}")
             
@@ -893,16 +953,19 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 "input[type='submit']",
                 "button[type='submit']",
                 "input[name='btnSubmit']",
-                "//button[contains(text(), 'Save')]",
-                "//button[contains(text(), 'Submit')]",
-                "//input[@value='Save']",
-                "//input[@value='Submit']",
+                "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'save')]",
+                "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'submit')]",
+                "//a[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'save')]",
+                "//a[contains(@onclick,'save') or contains(@onclick,'Save')]",
+                "//input[contains(translate(@value,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'save')]",
+                "//input[contains(translate(@value,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'submit')]",
                 # Common ASP.NET patterns
                 "[onclick*='__doPostBack']",
                 "input[id*='btn']",
                 "button[id*='btn']",
                 "input[name*='btn']",
-                "button[name*='btn']"
+                "button[name*='btn']",
+                "//input[contains(@id,'btn') or contains(@name,'btn')]",
             ]
 
             submitted = False
@@ -939,14 +1002,26 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     continue
 
             if not submitted:
-                print("⚠️  Could not find submit button, trying Enter key...")
+                # Try selecting obvious agreement checkboxes then retry
+                try:
+                    for cb in driver.find_elements(By.CSS_SELECTOR, "input[type='checkbox']"):
+                        try:
+                            label_txt = (cb.get_attribute('name') or '') + ' ' + (cb.get_attribute('id') or '')
+                            if any(k in label_txt.lower() for k in ["agree", "confirm", "terms", "stock", "accurate", "true"]):
+                                if not cb.is_selected():
+                                    driver.execute_script("arguments[0].click();", cb)
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
                 # Try Enter key on the last field
+                print("⚠️  Could not find submit button, trying Enter key...")
                 try:
                     remarks_field = driver.find_element(By.NAME, "areaRemarks")
                     remarks_field.send_keys("\n")
                     submitted = True
                     print("✅ Form submitted using Enter key")
-                except:
+                except Exception:
                     pass
 
             # Final fallback: submit the nearest form via JavaScript
@@ -962,20 +1037,46 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
 
             # ASP.NET postback fallback if still not submitted
             if not submitted:
-                postback_snippets = [
-                    "if (window.__doPostBack) { __doPostBack('btnSubmit',''); return true; } return false;",
-                    "if (window.__doPostBack) { __doPostBack('btnSave',''); return true; } return false;",
-                    "if (window.__doPostBack) { __doPostBack('ctl00$ContentPlaceHolder1$btnSubmit',''); return true; } return false;",
-                ]
-                for js in postback_snippets:
-                    try:
-                        ok = driver.execute_script(js)
-                        if ok:
+                try:
+                    # Enumerate candidate controls to discover real event targets
+                    candidates = driver.find_elements(By.XPATH, "//input[@type='submit' or @type='button' or @type='image'] | //button | //a[@onclick]")
+                    targets = []
+                    for el in candidates:
+                        try:
+                            txt = (el.get_attribute('value') or el.text or '')
+                            id_attr = el.get_attribute('id') or ''
+                            name_attr = el.get_attribute('name') or ''
+                            onclick = el.get_attribute('onclick') or ''
+                            blob = f"txt={txt} id={id_attr} name={name_attr}"
+                            if any(k in (txt or '').lower() for k in ["save", "post", "submit", "add", "publish"]):
+                                targets.append((el, id_attr, name_attr, onclick, blob))
+                        except Exception:
+                            continue
+                    # Try click best-matching target first
+                    for el, id_attr, name_attr, onclick, blob in targets:
+                        try:
+                            driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", el)
+                            time.sleep(0.2)
+                            driver.execute_script("arguments[0].click();", el)
                             submitted = True
-                            print("✅ Form submitted via __doPostBack fallback")
+                            print(f"✅ Form submitted via discovered control: {blob}")
                             break
-                    except Exception:
-                        continue
+                        except Exception:
+                            continue
+                    # Try __doPostBack with discovered name attribute
+                    if not submitted:
+                        for _, _, name_attr, _, blob in targets:
+                            try:
+                                if name_attr:
+                                    ok = driver.execute_script("if (window.__doPostBack) { __doPostBack(arguments[0], ''); return true } return false;", name_attr)
+                                    if ok:
+                                        submitted = True
+                                        print(f"✅ Form submitted via __doPostBack target: {name_attr}")
+                                        break
+                            except Exception:
+                                continue
+                except Exception:
+                    pass
             
             if submitted:
                 # Handle potential JS alert/confirm after submit
