@@ -697,6 +697,28 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                             pass
             except:
                 continue
+
+        # Explicitly click common cookie acceptance/close controls
+        try:
+            cookie_ctas = [
+                "//button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'accept')]",
+                "//button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'continue')]",
+                "//a[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'accept')]",
+                "//a[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'continue')]",
+                "//button[contains(.,'OK') or contains(.,'Ok') or contains(.,'ok')]",
+                "//a[contains(.,'OK') or contains(.,'Ok') or contains(.,'ok')]",
+                "//button[contains(@class,'close') or contains(.,'×') or contains(.,'x')]",
+            ]
+            for xp in cookie_ctas:
+                try:
+                    el = driver.find_element(By.XPATH, xp)
+                    if el.is_displayed():
+                        driver.execute_script("arguments[0].click();", el)
+                        dismissed_count += 1
+                except Exception:
+                    continue
+        except Exception:
+            pass
         
         if dismissed_count > 0:
             print(f"🍪 Dismissed {dismissed_count} popups/overlays")
@@ -933,6 +955,27 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             except Exception as e:
                 print(f"⚠️  Could not enter remarks: {e}")
 
+            # Optional date field (set to today) if present
+            try:
+                from datetime import datetime as _dt
+                value = _dt.utcnow().strftime('%Y-%m-%d')
+                date_input = None
+                for locator in [
+                    (By.CSS_SELECTOR, "input[type='date']"),
+                    (By.CSS_SELECTOR, "input[name*='date' i]"),
+                    (By.CSS_SELECTOR, "input[id*='date' i]")
+                ]:
+                    try:
+                        date_input = driver.find_element(*locator)
+                        break
+                    except Exception:
+                        continue
+                if date_input:
+                    driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('change'));", date_input, value)
+                    print(f"✅ Date set: {value}")
+            except Exception:
+                pass
+
             # Optional but commonly required dropdowns: Memory, Color, Market Spec, SIM Lock
             try:
                 desired_memory = str(row.get("memory", "")).strip()
@@ -1034,6 +1077,75 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         state_field.clear()
                         state_field.send_keys(state_value)
                         print(f"✅ State entered: {state_value}")
+                        break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+            # Min. Order
+            try:
+                min_order = str(row.get("minimum_order_quantity", row.get("min_order", "1")))
+                for locator in [
+                    (By.NAME, "txtMin"),
+                    (By.NAME, "txtMinOrder"),
+                    (By.CSS_SELECTOR, "input[name*='min' i]")
+                ]:
+                    try:
+                        mo = driver.find_element(*locator)
+                        mo.clear()
+                        mo.send_keys(min_order)
+                        print(f"✅ Min. Order entered: {min_order}")
+                        break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+            # Shipping / Item weight / Incoterms
+            try:
+                ship_value = str(row.get("packaging", row.get("shipping", "Packing")))
+                for name in ["shipping", "selShipping", "selShip"]:
+                    try:
+                        ship_sel = driver.find_element(By.NAME, name)
+                        Select(ship_sel).select_by_visible_text(ship_value)
+                        print(f"✅ Shipping selected: {ship_value}")
+                        break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+            try:
+                weight_value = str(row.get("item_weight", "0.3"))
+                for locator in [
+                    (By.NAME, "txtWeight"),
+                    (By.CSS_SELECTOR, "input[name*='weight' i]")
+                ]:
+                    try:
+                        w = driver.find_element(*locator)
+                        w.clear()
+                        w.send_keys(weight_value)
+                        print(f"✅ Item weight entered: {weight_value}")
+                        break
+                    except Exception:
+                        continue
+                # Unit select if present
+                try:
+                    unit_sel = driver.find_element(By.XPATH, "//select[option[contains(.,'kg')] or option[contains(.,'lbs')]]")
+                    Select(unit_sel).select_by_visible_text(str(row.get("weight_unit", "kg")))
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+            try:
+                incoterm_value = str(row.get("incoterm", "EXW"))
+                for name in ["selIncoterm", "incoterm", "incoterms"]:
+                    try:
+                        incoterm_sel = driver.find_element(By.NAME, name)
+                        Select(incoterm_sel).select_by_visible_text(incoterm_value)
+                        print(f"✅ Incoterm selected: {incoterm_value}")
                         break
                     except Exception:
                         continue
