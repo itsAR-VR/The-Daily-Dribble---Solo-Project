@@ -934,7 +934,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             except Exception as e:
                 print(f"⚠️  Could not select currency: {e}")
 
-            # Condition (optional, try a few names)
+            # Condition (optional, try a few names) with relaxed matching
             try:
                 condition = str(row.get("condition", "Used"))
                 cond_select = None
@@ -945,11 +945,16 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     except Exception:
                         continue
                 if cond_select:
+                    ok = False
                     try:
                         Select(cond_select).select_by_visible_text(condition)
+                        ok = True
                     except Exception:
+                        ok = self._select_relaxed(cond_select, [condition])
+                    if not ok:
                         try:
                             Select(cond_select).select_by_index(1)
+                            ok = True
                         except Exception:
                             pass
                     print(f"✅ Condition selected: {condition}")
@@ -1211,6 +1216,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 for locator in [
                     (By.NAME, "txtMin"),
                     (By.NAME, "txtMinOrder"),
+                    (By.NAME, "txtMinQty"),
                     (By.CSS_SELECTOR, "input[name*='min' i]")
                 ]:
                     try:
@@ -1414,25 +1420,63 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                             continue
                 except Exception:
                     pass
-                # Try Enter key on the last field
-                print("⚠️  Could not find submit button, trying Enter key...")
+                # Explicitly set hidden intent fields before any fallback
                 try:
-                    remarks_field = driver.find_element(By.NAME, "areaRemarks")
-                    remarks_field.send_keys(Keys.ENTER)
-                    time.sleep(0.3)
-                    submitted = True
-                    print("✅ Form submitted using Enter key")
+                    driver.execute_script("var a=document.getElementsByName('hdnAction')[0]; if(a){a.value='submit'}; var s=document.getElementsByName('hdnSectionType')[0]; if(s){s.value='1'};")
+                    print("⏳ Set hidden action fields (hdnAction=submit, hdnSectionType=1)")
                 except Exception:
                     pass
 
-            # Final fallback: submit the nearest form via JavaScript
+                # Prefer clicking the actual submitter or requestSubmit with the submitter
+                try:
+                    btn = None
+                    try:
+                        btn = driver.find_element(By.NAME, "btnSubmit")
+                    except Exception:
+                        pass
+                    if btn and btn.is_displayed():
+                        driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", btn)
+                        time.sleep(0.2)
+                        self._dismiss_popups(driver)
+                        try:
+                            # Use requestSubmit with submitter if available
+                            ok = driver.execute_script("var b=arguments[0]; var f=b && b.form; if(f && f.requestSubmit){ f.requestSubmit(b); return true } return false;", btn)
+                            if ok:
+                                submitted = True
+                                print("✅ Form submitted via form.requestSubmit(btnSubmit)")
+                            else:
+                                driver.execute_script("arguments[0].click();", btn)
+                                submitted = True
+                                print("✅ Form submitted via btnSubmit click")
+                        except Exception:
+                            try:
+                                btn.click()
+                                submitted = True
+                                print("✅ Form submitted via native click on btnSubmit")
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+
+                # Try Enter key on the remarks field only if still not submitted
+                if not submitted:
+                    print("⚠️  Could not find submit button, trying Enter key...")
+                    try:
+                        remarks_field = driver.find_element(By.NAME, "areaRemarks")
+                        remarks_field.send_keys(Keys.ENTER)
+                        time.sleep(0.3)
+                        submitted = True
+                        print("✅ Form submitted using Enter key")
+                    except Exception:
+                        pass
+
+            # Final fallback: submit the nearest form via JavaScript (after setting hidden intent)
             if not submitted:
                 try:
-                    driver.execute_script(
-                        "var f = document.querySelector('form'); if (f) { f.submit(); return true } else { return false }"
-                    )
-                    submitted = True
-                    print("✅ Form submitted via form.submit() JS fallback")
+                    ok = driver.execute_script("var a=document.getElementsByName('hdnAction')[0]; if(a){a.value='submit'}; var s=document.getElementsByName('hdnSectionType')[0]; if(s){s.value='1'}; var b=document.getElementsByName('btnSubmit')[0]; var f=(b && b.form) || document.querySelector('form'); if(f){ if (f.requestSubmit){ f.requestSubmit(b||undefined); } else { f.submit(); } return true } return false;")
+                    if ok:
+                        submitted = True
+                        print("✅ Form submitted via requestSubmit/submit fallback (with hidden intent)")
                 except Exception:
                     print("⚠️  JS form.submit() fallback failed")
 
