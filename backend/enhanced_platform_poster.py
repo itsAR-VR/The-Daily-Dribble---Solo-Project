@@ -484,6 +484,95 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
     PLATFORM = "CELLPEX"
     LOGIN_URL = "https://www.cellpex.com/login"
     
+    # ---------- Helpers tailored to Cellpex form ----------
+    def _normalize_price_str(self, price_value) -> str:
+        """Cellpex price input often has maxlength=4 and expects digits only.
+        Convert any float/str to a 1-4 digit integer string.
+        """
+        try:
+            if price_value is None or str(price_value).strip() == "":
+                return ""
+            parsed = int(round(float(str(price_value).replace(",", "").strip())))
+            if parsed < 0:
+                parsed = 0
+            if parsed > 9999:
+                parsed = 9999
+            return str(parsed)
+        except Exception:
+            digits = "".join(ch for ch in str(price_value) if ch.isdigit())[:4]
+            return digits
+
+    def _normalize_memory_label(self, value: str) -> str:
+        """Map memory like '128GB' -> '128 GB', '1TB' -> '1 TB' to match Cellpex visible options."""
+        if not value:
+            return ""
+        v = str(value).strip().upper().replace("G B", "GB").replace("T B", "TB")
+        v = v.replace("GB", " GB").replace("TB", " TB")
+        v = " ".join(v.split())
+        return v
+
+    def _map_color_label(self, value: str) -> list:
+        """Return candidate color labels available on Cellpex for a given input."""
+        if not value:
+            return []
+        v = str(value).strip().lower()
+        mapping = {
+            "space black": ["Black", "Graphite"],
+            "space gray": ["Gray", "Graphite"],
+            "space grey": ["Gray", "Graphite"],
+            "deep purple": ["Purple"],
+            "midnight": ["Black"],
+            "starlight": ["Champagne", "Gold", "White"],
+            "rose gold": ["Rose Gold"],
+            "(product)red": ["Red"],
+            "product red": ["Red"],
+        }
+        base = mapping.get(v)
+        if base:
+            return base
+        cap = " ".join(w.capitalize() for w in v.split())
+        return [cap]
+
+    def _select_relaxed(self, sel_element, desired_text_candidates: list) -> bool:
+        """Try to select option by visible text with relaxed matching: exact (case-insensitive),
+        then contains, then startswith. Returns True if selection succeeded.
+        """
+        try:
+            dropdown = Select(sel_element)
+            options = dropdown.options
+            texts = [(opt.text or "").strip() for opt in options]
+            lower_texts = [t.lower() for t in texts]
+            # Exact case-insensitive
+            for cand in desired_text_candidates:
+                if not cand:
+                    continue
+                c = str(cand).strip()
+                if c.lower() in lower_texts:
+                    idx = lower_texts.index(c.lower())
+                    dropdown.select_by_index(idx)
+                    return True
+            # Contains
+            for cand in desired_text_candidates:
+                if not cand:
+                    continue
+                c = str(cand).strip().lower()
+                for idx, t in enumerate(lower_texts):
+                    if c and c in t:
+                        dropdown.select_by_index(idx)
+                        return True
+            # Startswith
+            for cand in desired_text_candidates:
+                if not cand:
+                    continue
+                c = str(cand).strip().lower()
+                for idx, t in enumerate(lower_texts):
+                    if c and t.startswith(c):
+                        dropdown.select_by_index(idx)
+                        return True
+            return False
+        except Exception:
+            return False
+    
     def login_with_2fa(self) -> bool:
         """Enhanced login with 2FA support - Cellpex specific implementation"""
         driver = self.driver
@@ -780,20 +869,32 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             except Exception as e:
                 print(f"⚠️  Could not select brand: {e}")
             
-            # Available quantity (txtAvailable)
+            # Available quantity: try txtAvailable, then txtQty
             try:
-                available_field = wait.until(EC.presence_of_element_located((By.NAME, "txtAvailable")))
-                available_field.clear()
                 quantity = str(row.get("quantity", "1"))
-                available_field.send_keys(quantity)
-                print(f"✅ Quantity entered: {quantity}")
-                self._capture_step("quantity_entered", f"Quantity entered: {quantity}")
+                qty_field = None
+                for locator in [
+                    (By.NAME, "txtAvailable"),
+                    (By.NAME, "txtQty"),
+                ]:
+                    try:
+                        qty_field = driver.find_element(*locator)
+                        break
+                    except Exception:
+                        continue
+                if qty_field:
+                    qty_field.clear()
+                    qty_field.send_keys(quantity)
+                    print(f"✅ Quantity entered: {quantity}")
+                    self._capture_step("quantity_entered", f"Quantity entered: {quantity}")
+                else:
+                    print("⚠️  Quantity field not found (txtAvailable/txtQty)")
             except Exception as e:
                 print(f"⚠️  Could not enter quantity: {e}")
             
-            # Price (try multiple common selectors)
+            # Price (try multiple common selectors) — normalize to integer (maxlength=4)
             try:
-                price_value = str(row.get("price", "")).strip()
+                price_value = self._normalize_price_str(row.get("price", ""))
                 if price_value:
                     price_selectors = [
                         (By.NAME, "txtPrice"),
@@ -811,7 +912,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     if price_field:
                         price_field.clear()
                         price_field.send_keys(price_value)
-                        print(f"✅ Price entered: {price_value}")
+                        print(f"✅ Price entered (normalized): {price_value}")
                         self._capture_step("price_entered", f"Price: {price_value}")
             except Exception as e:
                 print(f"⚠️  Could not enter price: {e}")
@@ -982,12 +1083,19 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             try:
                 desired_memory = str(row.get("memory", "")).strip()
                 if desired_memory:
+                    normalized = self._normalize_memory_label(desired_memory)
                     for name in ["selMemory", "memory", "mem", "selMem"]:
                         try:
                             memory_select = driver.find_element(By.NAME, name)
-                            Select(memory_select).select_by_visible_text(desired_memory)
-                            print(f"✅ Memory selected: {desired_memory}")
-                            break
+                            ok = False
+                            try:
+                                Select(memory_select).select_by_visible_text(normalized)
+                                ok = True
+                            except Exception:
+                                ok = self._select_relaxed(memory_select, [normalized, desired_memory, desired_memory.replace(" ", "")])
+                            if ok:
+                                print(f"✅ Memory selected: {normalized}")
+                                break
                         except Exception:
                             continue
             except Exception:
@@ -996,12 +1104,24 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             try:
                 desired_color = str(row.get("color", "")).strip()
                 if desired_color:
+                    candidates = self._map_color_label(desired_color)
                     for name in ["selColor", "color", "selColour", "colour"]:
                         try:
                             color_select = driver.find_element(By.NAME, name)
-                            Select(color_select).select_by_visible_text(desired_color)
-                            print(f"✅ Color selected: {desired_color}")
-                            break
+                            ok = False
+                            for cand in candidates:
+                                try:
+                                    Select(color_select).select_by_visible_text(cand)
+                                    ok = True
+                                    break
+                                except Exception:
+                                    continue
+                            if not ok:
+                                ok = self._select_relaxed(color_select, candidates + [desired_color])
+                            if ok:
+                                picked = candidates[0] if candidates else desired_color
+                                print(f"✅ Color selected: {picked}")
+                                break
                         except Exception:
                             continue
             except Exception:
@@ -1104,15 +1224,16 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             except Exception:
                 pass
 
-            # Shipping / Item weight / Incoterms
+            # Shipping / Item weight / Incoterms (Cellpex uses selPacking for packaging)
             try:
-                ship_value = str(row.get("packaging", row.get("shipping", "Packing")))
-                for name in ["shipping", "selShipping", "selShip"]:
+                pack_value = str(row.get("packaging", "Any Pack")).strip() or "Any Pack"
+                for name in ["selPacking", "packing", "selPack"]:
                     try:
-                        ship_sel = driver.find_element(By.NAME, name)
-                        Select(ship_sel).select_by_visible_text(ship_value)
-                        print(f"✅ Shipping selected: {ship_value}")
-                        break
+                        pack_sel = driver.find_element(By.NAME, name)
+                        ok = self._select_relaxed(pack_sel, [pack_value, "Any Pack", "Original Box", "Bulk Packed"]) or False
+                        if ok:
+                            print(f"✅ Packing selected: {pack_value}")
+                            break
                     except Exception:
                         continue
             except Exception:
