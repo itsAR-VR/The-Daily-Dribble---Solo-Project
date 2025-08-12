@@ -10,6 +10,8 @@ import os
 from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
@@ -1196,6 +1198,31 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             # Step 3: Dismiss popups again after scroll
             self._dismiss_popups(driver)
             
+            # Try a focused search for the exact blue "Submit" button shown in UI
+            precise_submit_xpaths = [
+                "//input[@type='submit' and (translate(@value,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='submit' or contains(@value,'Submit'))]",
+                "//button[@type='submit' and (normalize-space(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'))='submit')]",
+                "//input[contains(@class,'btn') and contains(translate(@value,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'submit')]",
+                "//button[contains(@class,'btn') and contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'submit')]",
+                "//input[@type='submit' and @value='Submit']"
+            ]
+            for xp in precise_submit_xpaths:
+                try:
+                    el = driver.find_element(By.XPATH, xp)
+                    if el.is_displayed():
+                        driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", el)
+                        time.sleep(0.3)
+                        self._dismiss_popups(driver)
+                        try:
+                            driver.execute_script("arguments[0].click();", el)
+                            submitted = True
+                            print(f"✅ Form submitted via precise selector: {xp}")
+                            break
+                        except Exception:
+                            pass
+                except Exception:
+                    continue
+
             submit_selectors = [
                 "input[type='submit']",
                 "button[type='submit']",
@@ -1233,6 +1260,11 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         # Final popup dismissal
                         self._dismiss_popups(driver)
                         
+                        # Try to move mouse to avoid overlay hover issues
+                        try:
+                            ActionChains(driver).move_to_element(submit_btn).pause(0.1).perform()
+                        except Exception:
+                            pass
                         # Try JavaScript click first (most reliable)
                         try:
                             driver.execute_script("arguments[0].click();", submit_btn)
@@ -1265,7 +1297,8 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 print("⚠️  Could not find submit button, trying Enter key...")
                 try:
                     remarks_field = driver.find_element(By.NAME, "areaRemarks")
-                    remarks_field.send_keys("\n")
+                    remarks_field.send_keys(Keys.ENTER)
+                    time.sleep(0.3)
                     submitted = True
                     print("✅ Form submitted using Enter key")
                 except Exception:
@@ -1322,6 +1355,16 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                                         break
                             except Exception:
                                 continue
+                except Exception:
+                    pass
+
+            # Final heuristic: submit the first visible form using JS if still not submitted
+            if not submitted:
+                try:
+                    ok = driver.execute_script("var f=document.querySelector('form'); if(f){f.requestSubmit ? f.requestSubmit() : f.submit(); return true} return false;")
+                    if ok:
+                        submitted = True
+                        print("✅ Form submitted via requestSubmit() heuristic")
                 except Exception:
                     pass
             
