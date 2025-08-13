@@ -533,6 +533,27 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
         cap = " ".join(w.capitalize() for w in v.split())
         return [cap]
 
+    def _normalize_weight_str(self, weight_value) -> str:
+        try:
+            f = float(str(weight_value).strip())
+        except Exception:
+            return "0.3"
+        if f < 10:
+            s = f"{round(f, 1):.1f}"
+        else:
+            s = str(int(round(f)))
+        if s.endswith(".0") and len(s) > 3:
+            s = s[:-2]
+        if "." in s:
+            s = s.rstrip("0").rstrip(".")
+            if len(s) == 1 and s.isdigit():
+                s = f"{s}.0"
+        if len(s) < 2:
+            s = "0.3"
+        if len(s) > 3:
+            s = s[:3]
+        return s
+
     def _select_relaxed(self, sel_element, desired_text_candidates: list) -> bool:
         """Try to select option by visible text with relaxed matching: exact (case-insensitive),
         then contains, then startswith. Returns True if selection succeeded.
@@ -1248,7 +1269,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 pass
 
             try:
-                weight_value = str(row.get("item_weight", "0.3"))
+                weight_value = self._normalize_weight_str(row.get("item_weight", "0.3"))
                 for locator in [
                     (By.NAME, "txtWeight"),
                     (By.CSS_SELECTOR, "input[name*='weight' i]")
@@ -1257,14 +1278,31 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         w = driver.find_element(*locator)
                         w.clear()
                         w.send_keys(weight_value)
-                        print(f"✅ Item weight entered: {weight_value}")
+                        driver.execute_script(
+                            "arguments[0].value = arguments[1];"
+                            "arguments[0].dispatchEvent(new Event('input'));"
+                            "arguments[0].dispatchEvent(new Event('change'));"
+                            "arguments[0].blur();",
+                            w, weight_value
+                        )
+                        print(f"✅ Item weight entered (normalized): {weight_value}")
                         break
                     except Exception:
                         continue
                 # Unit select if present
                 try:
                     unit_sel = driver.find_element(By.XPATH, "//select[option[contains(.,'kg')] or option[contains(.,'lbs')]]")
-                    Select(unit_sel).select_by_visible_text(str(row.get("weight_unit", "kg")))
+                    try:
+                        Select(unit_sel).select_by_visible_text("kg")
+                    except Exception:
+                        try:
+                            opts = Select(unit_sel).options
+                            for i, o in enumerate(opts):
+                                if "kg" in (o.text or "").lower():
+                                    Select(unit_sel).select_by_index(i)
+                                    break
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             except Exception:
@@ -1555,8 +1593,21 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 ]
                 has_error = any(indicator in page_text for indicator in error_indicators)
                 if has_error:
+                    details = []
+                    try:
+                        msg_els = driver.find_elements(
+                            By.XPATH,
+                            "//small[contains(@class,'help') or contains(@class,'error') or contains(@class,'invalid') or contains(@class,'text-danger') or contains(@class,'fv-')]"
+                        )
+                        for el in msg_els:
+                            t = (el.text or "").strip()
+                            if t:
+                                details.append(t)
+                    except Exception:
+                        pass
+                    joined = "; ".join(details[:8]) if details else ""
                     print("❌ Error detected in response")
-                    self._capture_step("listing_error", "Form submission returned error")
+                    self._capture_step("listing_error", f"Form submission returned error{(': ' + joined) if joined else ''}")
                     return "Error: Form submission failed - check required fields"
 
                 # Detect moderation/review acknowledgement from Cellpex
