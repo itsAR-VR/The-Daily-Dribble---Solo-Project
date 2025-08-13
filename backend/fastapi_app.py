@@ -817,6 +817,7 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                             # Build a minimal row-like dict
                             row_like = {
                                 "brand": listing_data.brand,
+                                "product_name": listing_data.product_name,
                                 "model": listing_data.model_code,
                                 "quantity": listing_data.quantity,
                                 "price": listing_data.price,
@@ -824,6 +825,17 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                                 "condition": listing_data.condition,
                                 "memory": listing_data.memory,
                                 "color": listing_data.color,
+                                "market_spec": listing_data.market_spec,
+                                "sim_lock_status": listing_data.sim_lock_status,
+                                "carrier": listing_data.carrier,
+                                "country": listing_data.country,
+                                "state": listing_data.state,
+                                "minimum_order_quantity": listing_data.minimum_order_quantity,
+                                "packaging": listing_data.packaging,
+                                "item_weight": listing_data.item_weight,
+                                "weight_unit": listing_data.weight_unit,
+                                "incoterm": listing_data.incoterm,
+                                "accepted_payments": listing_data.accepted_payments,
                                 "description": listing_data.description,
                             }
                             result_msg = poster.post_listing(row_like)

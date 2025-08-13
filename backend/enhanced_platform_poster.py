@@ -964,7 +964,9 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
 
             # Brand/Model description (txtBrandModel) with autocomplete selection
             try:
-                product_name = f"{row.get('brand', 'Apple')} {row.get('model', 'iPhone 14 Pro')}"
+                human_product = str(row.get('product_name') or '').strip()
+                fallback_model = f"{row.get('brand', 'Apple')} {row.get('model', 'iPhone 14 Pro')}".strip()
+                product_name = human_product or fallback_model
                 # Prefer interactive typing to trigger autocomplete
                 model_field = None
                 for locator in [
@@ -1621,6 +1623,10 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 token_sets.append([brand])
             elif model:
                 token_sets.append([model])
+            # Include the human product name if provided (e.g., "iPhone 14 Pro")
+            human_product = str(row.get('product_name', '')).strip()
+            if human_product:
+                token_sets.append([human_product])
             # Add price pattern if available (don't rely solely on it)
             if price:
                 token_sets.append([price])
