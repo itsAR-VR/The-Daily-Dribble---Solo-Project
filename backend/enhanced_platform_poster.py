@@ -1289,18 +1289,39 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         break
                     except Exception:
                         continue
-                # Unit select if present
+                # Unit select if present (explicit names first, then generic XPATH)
                 try:
-                    unit_sel = driver.find_element(By.XPATH, "//select[option[contains(.,'kg')] or option[contains(.,'lbs')]]")
-                    try:
-                        Select(unit_sel).select_by_visible_text("kg")
-                    except Exception:
+                    picked = False
+                    for name in ["selWeightType", "selWeightUnit", "selWeight", "weightUnit", "unit"]:
                         try:
-                            opts = Select(unit_sel).options
-                            for i, o in enumerate(opts):
-                                if "kg" in (o.text or "").lower():
-                                    Select(unit_sel).select_by_index(i)
+                            unit_sel = driver.find_element(By.NAME, name)
+                            try:
+                                Select(unit_sel).select_by_visible_text("kg")
+                                picked = True
+                                break
+                            except Exception:
+                                # Relaxed match for options containing 'kg'
+                                opts = Select(unit_sel).options
+                                for i, o in enumerate(opts):
+                                    if "kg" in (o.text or "").lower():
+                                        Select(unit_sel).select_by_index(i)
+                                        picked = True
+                                        break
+                                if picked:
                                     break
+                        except Exception:
+                            continue
+                    if not picked:
+                        try:
+                            unit_sel = driver.find_element(By.XPATH, "//select[option[contains(.,'kg')] or option[contains(.,'lbs')]]")
+                            try:
+                                Select(unit_sel).select_by_visible_text("kg")
+                            except Exception:
+                                opts = Select(unit_sel).options
+                                for i, o in enumerate(opts):
+                                    if "kg" in (o.text or "").lower():
+                                        Select(unit_sel).select_by_index(i)
+                                        break
                         except Exception:
                             pass
                 except Exception:
@@ -1585,32 +1606,11 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 # Give the site time to persist/redirect
                 time.sleep(18)
 
-                # Basic error sniffing on the immediate response page
+                # Inspect immediate response page
                 current_url = driver.current_url
                 page_text = driver.page_source.lower()
-                error_indicators = [
-                    "error", "failed", "invalid", "required", "please fill", "must select", "already exists"
-                ]
-                has_error = any(indicator in page_text for indicator in error_indicators)
-                if has_error:
-                    details = []
-                    try:
-                        msg_els = driver.find_elements(
-                            By.XPATH,
-                            "//small[contains(@class,'help') or contains(@class,'error') or contains(@class,'invalid') or contains(@class,'text-danger') or contains(@class,'fv-')]"
-                        )
-                        for el in msg_els:
-                            t = (el.text or "").strip()
-                            if t:
-                                details.append(t)
-                    except Exception:
-                        pass
-                    joined = "; ".join(details[:8]) if details else ""
-                    print("❌ Error detected in response")
-                    self._capture_step("listing_error", f"Form submission returned error{(': ' + joined) if joined else ''}")
-                    return "Error: Form submission failed - check required fields"
 
-                # Detect moderation/review acknowledgement from Cellpex
+                # Detect moderation/review acknowledgement FIRST (before generic error sniffing)
                 review_indicators = [
                     "screened by a proprietary fraud prevention system",
                     "reviewed in 24 hours",
@@ -1620,6 +1620,50 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     print("🕒 Listing submitted and pending Cellpex review")
                     self._capture_step("listing_pending_review", "Submission accepted; pending moderation")
                     return "Success: Submitted for review (may appear after moderation)"
+
+                # Generic error sniffing
+                error_indicators = [
+                    "error", "failed", "invalid", "required", "please fill", "must select", "already exists"
+                ]
+                has_error = any(indicator in page_text for indicator in error_indicators)
+                if has_error:
+                    details = []
+                    # 1) Common inline helper/error elements
+                    try:
+                        msg_els = driver.find_elements(
+                            By.XPATH,
+                            "//small|//span|//div"
+                            "[contains(@class,'help') or contains(@class,'error') or contains(@class,'invalid') or contains(@class,'text-danger') or contains(@class,'validation') or contains(@class,'feedback') or contains(@class,'fv-') or contains(@role,'alert')]"
+                        )
+                        for el in msg_els:
+                            t = (el.text or "").strip()
+                            if t:
+                                details.append(t)
+                    except Exception:
+                        pass
+                    # 2) HTML5 validation messages and aria-invalid highlights
+                    try:
+                        js = (
+                            "var msgs=[];\n"
+                            "document.querySelectorAll('input,select,textarea').forEach(function(el){\n"
+                            "  try{\n"
+                            "    if (el.willValidate && !el.checkValidity() && el.validationMessage){ msgs.push(el.validationMessage); }\n"
+                            "    var aria=el.getAttribute('aria-invalid');\n"
+                            "    if(aria==='true'){ var lab=document.querySelector('label[for=\"'+el.id+'\"]'); if(lab&&lab.textContent){ msgs.push((lab.textContent+': invalid').trim()); } }\n"
+                            "  }catch(e){}\n"
+                            "});\n"
+                            "Array.from(new Set(msgs)).slice(0,8);"
+                        )
+                        extra = driver.execute_script(js) or []
+                        for t in extra:
+                            if t:
+                                details.append(str(t).strip())
+                    except Exception:
+                        pass
+                    joined = "; ".join([d for d in details if d][:8])
+                    print("❌ Error detected in response")
+                    self._capture_step("listing_error", f"Form submission returned error{(': ' + joined) if joined else ''}")
+                    return "Error: Form submission failed - check required fields"
 
                 # Always verify on inventory/summary pages before declaring success
                 self._capture_step("inventory_check_start", f"Post-submit at {current_url}")
