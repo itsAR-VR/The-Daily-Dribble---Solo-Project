@@ -862,7 +862,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 category_dropdown = Select(category_select)
                 # Try to select appropriate category
                 try:
-                    category_dropdown.select_by_visible_text("Smartphones")
+                    category_dropdown.select_by_visible_text("Cell Phones")
                 except:
                     try:
                         category_dropdown.select_by_index(1)  # First non-empty option
@@ -890,13 +890,15 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             except Exception as e:
                 print(f"⚠️  Could not select brand: {e}")
             
-            # Available quantity: try txtAvailable, then txtQty
+            # Available quantity: use quantity-specific fields (NOT txtAvailable)
             try:
                 quantity = str(row.get("quantity", "1"))
                 qty_field = None
                 for locator in [
-                    (By.NAME, "txtAvailable"),
                     (By.NAME, "txtQty"),
+                    (By.NAME, "txtQuantity"),
+                    (By.NAME, "quantity"),
+                    (By.NAME, "txtQTY"),
                 ]:
                     try:
                         qty_field = driver.find_element(*locator)
@@ -949,9 +951,23 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     except Exception:
                         continue
                 if currency_select:
-                    Select(currency_select).select_by_visible_text(currency)
-                    print(f"✅ Currency selected: {currency}")
-                    self._capture_step("currency_selected", f"Currency: {currency}")
+                    ok = False
+                    try:
+                        Select(currency_select).select_by_visible_text(currency)
+                        ok = True
+                    except Exception:
+                        # Relaxed fallback with common synonyms
+                        candidates = [currency]
+                        if currency == "USD":
+                            candidates += ["US Dollar", "USD $", "$", "Dollar"]
+                        elif currency == "EUR":
+                            candidates += ["Euro", "EUR €", "€"]
+                        elif currency == "GBP":
+                            candidates += ["British Pound", "GBP £", "£", "Pound"]
+                        ok = self._select_relaxed(currency_select, candidates)
+                    if ok:
+                        print(f"✅ Currency selected: {currency}")
+                        self._capture_step("currency_selected", f"Currency: {currency}")
             except Exception as e:
                 print(f"⚠️  Could not select currency: {e}")
 
@@ -1107,6 +1123,21 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             except Exception:
                 pass
 
+            # Explicitly handle Cellpex Available Date text field (txtAvailable -> MM/DD/YYYY)
+            try:
+                from datetime import datetime as _dt
+                available_value = _dt.now().strftime('%m/%d/%Y')
+                try:
+                    avail_field = driver.find_element(By.NAME, "txtAvailable")
+                    avail_field.clear()
+                    avail_field.send_keys(available_value)
+                    print(f"✅ Available Date entered: {available_value}")
+                    self._capture_step("available_date_entered", f"Available: {available_value}")
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
             # Optional but commonly required dropdowns: Memory, Color, Market Spec, SIM Lock
             try:
                 desired_memory = str(row.get("memory", "")).strip()
@@ -1157,14 +1188,30 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
 
             try:
                 desired_market = str(row.get("market_spec", row.get("market", "US"))).strip()
-                mapping = {"US": "US", "Euro": "Euro", "UK": "UK", "Asia": "Asia", "Arabic": "Arabic", "Other": "Other"}
-                desired_market = mapping.get(desired_market, desired_market)
+                base_map = {"US": "US", "USA": "US", "Euro": "Euro", "EU": "Euro", "UK": "UK", "Asia": "Asia", "Arabic": "Arabic", "Other": "Other"}
+                desired_market_norm = base_map.get(desired_market, desired_market)
                 for name in ["selMarket", "market", "selSpec", "marketSpec", "selMarketSpec"]:
                     try:
                         market_select = driver.find_element(By.NAME, name)
-                        Select(market_select).select_by_visible_text(desired_market)
-                        print(f"✅ Market Spec selected: {desired_market}")
-                        break
+                        ok = False
+                        # Try exact first
+                        try:
+                            Select(market_select).select_by_visible_text(desired_market_norm)
+                            ok = True
+                        except Exception:
+                            # Relaxed try with common suffixes
+                            cands = [
+                                desired_market_norm,
+                                f"{desired_market_norm} Market",
+                                f"{desired_market_norm} market",
+                                f"{desired_market_norm} Spec",
+                                f"{desired_market_norm} spec.",
+                                f"{desired_market_norm} spec"
+                            ]
+                            ok = self._select_relaxed(market_select, cands)
+                        if ok:
+                            print(f"✅ Market Spec selected: {desired_market_norm}")
+                            break
                     except Exception:
                         continue
             except Exception:
@@ -1172,12 +1219,18 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
 
             try:
                 desired_sim = str(row.get("sim_lock_status", row.get("sim_lock", "Unlocked"))).strip()
-                for name in ["selSim", "selSimLock", "simlock", "SIM", "SIM Lock"]:
+                for name in ["selSim", "selSimLock", "selSIMlock", "simlock", "SIM", "SIM Lock"]:
                     try:
                         sim_select = driver.find_element(By.NAME, name)
-                        Select(sim_select).select_by_visible_text(desired_sim)
-                        print(f"✅ SIM Lock selected: {desired_sim}")
-                        break
+                        ok = False
+                        try:
+                            Select(sim_select).select_by_visible_text(desired_sim)
+                            ok = True
+                        except Exception:
+                            ok = self._select_relaxed(sim_select, [desired_sim, desired_sim.upper(), desired_sim.capitalize()])
+                        if ok:
+                            print(f"✅ SIM Lock selected: {desired_sim}")
+                            break
                     except Exception:
                         continue
             except Exception:
