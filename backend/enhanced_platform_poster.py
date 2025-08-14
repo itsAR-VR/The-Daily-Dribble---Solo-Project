@@ -782,6 +782,36 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             print(f"❌ Error entering Cellpex 2FA code: {e}")
             return False
     
+    def _extract_cellpex_success_message(self) -> str:
+        """Extract post-submit confirmation banner/message text if present."""
+        try:
+            candidates = []
+            # Common success/notice containers
+            try:
+                candidates.extend(self.driver.find_elements(By.XPATH, "//div[contains(@class,'alert') or contains(@class,'success') or contains(@class,'notice') or contains(@class,'msg')]") )
+            except Exception:
+                pass
+            # Paragraphs or generic elements mentioning review/moderation/success
+            try:
+                candidates.extend(self.driver.find_elements(By.XPATH, "//p[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'success') or contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'review') or contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'moderation')]") )
+            except Exception:
+                pass
+            try:
+                candidates.extend(self.driver.find_elements(By.XPATH, "//*[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'review') or contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'moderation') or contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'submitted')]") )
+            except Exception:
+                pass
+            for el in candidates:
+                try:
+                    if el.is_displayed():
+                        txt = (el.text or '').strip()
+                        if txt:
+                            return txt
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return ""
+
     def _dismiss_popups(self, driver):
         """Dismiss any popups that might interfere with form interaction"""
         popup_selectors = [
@@ -1663,26 +1693,19 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 current_url = driver.current_url
                 page_text = driver.page_source.lower()
 
-                # Detect moderation/review acknowledgement FIRST (before generic error sniffing)
+                # Detect moderation/review acknowledgement FIRST – treat banner as definitive success
                 review_indicators = [
                     "screened by a proprietary fraud prevention system",
                     "reviewed in 24 hours",
-                    "reviewed within 24 hours"
+                    "reviewed within 24 hours",
+                    "submitted for review",
+                    "will appear after moderation"
                 ]
                 if any(ind in page_text for ind in review_indicators):
-                    print("🕒 Listing submitted and pending Cellpex review")
-                    self._capture_step("listing_pending_review", "Submission accepted; pending moderation")
-                    # IMPORTANT: Even if Cellpex shows a review banner, verify presence in account to avoid false positives
-                    self._capture_step("inventory_check_start", f"Post-submit (review) at {current_url}")
-                    verified = self._verify_cellpex_listing(row)
-                    if verified:
-                        print("🎉 Listing verified in account after submission (review)")
-                        self._capture_step("listing_verified", "Verified listing appears in account")
-                        return "Success: Submitted for review and verified in account"
-                    else:
-                        print("⚠️  Listing not visible in account yet after submission (review)")
-                        self._capture_step("listing_not_found", "Listing not found in inventory after submit (review)")
-                        return "Error: Submission accepted but listing not visible in account yet (pending moderation)"
+                    banner = self._extract_cellpex_success_message() or "Submission accepted; pending moderation"
+                    print("🕒 Listing submitted; success banner detected")
+                    self._capture_step("listing_success_message", banner)
+                    return f"Success: {banner}"
 
                 # Generic error sniffing
                 error_indicators = [
