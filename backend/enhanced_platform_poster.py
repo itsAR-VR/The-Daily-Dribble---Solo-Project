@@ -1750,60 +1750,92 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             return f"Error: {str(e)}"
 
     def _verify_cellpex_listing(self, row) -> bool:
-        """Verify that the listing exists in the account by visiting inventory/summary pages
-        and checking for strong signals (brand AND model present on the page, optionally price).
+        """Verify listing strictly by scanning the actual inventory grid for a matching row.
+        Returns True only when we find a row containing brand AND price (and ideally model/qty).
         """
         try:
             driver = self.driver
-            brand = str(row.get("brand", "")).strip()
-            model = str(row.get("model", "")).strip()
-            price = str(row.get("price", "")).strip()
-            currency = str(row.get("currency", "")).strip().upper()
+            brand = (str(row.get("brand", "")).strip() or "").lower()
+            product_name = (str(row.get("product_name", "")).strip() or "").lower()
+            model = (str(row.get("model", "")).strip() or "").lower()
+            price_norm = (self._normalize_price_str(row.get("price")) or "").strip()
+            qty_norm = str(row.get("quantity", "")).strip()
 
-            # Pages to try for verification
-            targets = [
+            # Visit inventory first; refresh once if needed
+            inventory_urls = [
                 "https://www.cellpex.com/my-inventory",
                 "https://www.cellpex.com/my-summary",
-                "https://www.cellpex.com/wholesale-search-results",
-                "https://www.cellpex.com/list/wholesale-inventory",
             ]
 
-            # Helper to assert presence of multiple tokens
-            def contains_all_tokens(text: str, tokens: list[str]) -> bool:
-                text_l = text.lower()
-                return all(t and t.lower() in text_l for t in tokens)
+            # Helper: evaluate a table row for a strong match
+            def row_is_match(row_text_l: str) -> bool:
+                if not row_text_l:
+                    return False
+                # Require brand AND price in the same row to avoid false positives
+                brand_ok = bool(brand and brand in row_text_l)
+                price_ok = bool(price_norm and price_norm in row_text_l)
+                # Add optional boosters
+                model_ok = bool(model and model in row_text_l) or bool(product_name and product_name in row_text_l)
+                qty_ok = bool(qty_norm and (f" {qty_norm} " in f" {row_text_l} " or f"qty {qty_norm}" in row_text_l))
+                # Strong match: brand + price, plus at least one booster if present
+                if brand_ok and price_ok and (model_ok or qty_ok or (product_name and product_name in row_text_l)):
+                    return True
+                # If model name is very specific (e.g., iPhone 14 Pro), allow brand+model alone with qty
+                if brand_ok and model_ok and qty_ok:
+                    return True
+                return False
 
-            # Build token sets to look for
-            token_sets = []
-            if brand and model:
-                token_sets.append([brand, model])
-            elif brand:
-                token_sets.append([brand])
-            elif model:
-                token_sets.append([model])
-            # Include the human product name if provided (e.g., "iPhone 14 Pro")
-            human_product = str(row.get('product_name', '')).strip()
-            if human_product:
-                token_sets.append([human_product])
-            # Add price pattern if available (don't rely solely on it)
-            if price:
-                token_sets.append([price])
-            if price and currency:
-                token_sets.append([currency, price])
+            # Helper: scan visible tables for matching rows
+            def scan_tables_for_match() -> bool:
+                try:
+                    tables = driver.find_elements(By.XPATH, "//table[contains(@id,'gv') or contains(@id,'grid') or contains(@class,'grid') or contains(@class,'table')]")
+                    for tbl in tables:
+                        if not tbl.is_displayed():
+                            continue
+                        rows = tbl.find_elements(By.XPATH, ".//tr[td]")
+                        for r in rows[:60]:  # Limit scan for performance
+                            try:
+                                txt = (r.text or "").strip().lower()
+                                if row_is_match(txt):
+                                    return True
+                            except Exception:
+                                continue
+                    return False
+                except Exception:
+                    return False
 
-            for url in targets:
+            # Scan inventory pages
+            for idx, url in enumerate(inventory_urls):
                 try:
                     driver.get(url)
                     time.sleep(3)
-                    page = driver.page_source
-                    # Quick capture for diagnostics
                     self._capture_step("inventory_page", f"Checked {url}")
-                    # If any strong token set matches, consider verified
-                    for tokens in token_sets:
-                        if contains_all_tokens(page, tokens):
-                            return True
+                    # Obvious 'no records' guard
+                    page_l = driver.page_source.lower()
+                    if any(tok in page_l for tok in ["no records", "no results", "nothing found"]):
+                        continue
+                    if scan_tables_for_match():
+                        return True
+                    # One soft refresh on first pass
+                    if idx == 0:
+                        try:
+                            driver.refresh(); time.sleep(2)
+                            if scan_tables_for_match():
+                                return True
+                        except Exception:
+                            pass
                 except Exception:
                     continue
+
+            # As a last resort, try wholesale search results (less reliable, so still require brand+price)
+            try:
+                driver.get("https://www.cellpex.com/wholesale-search-results")
+                time.sleep(2)
+                if scan_tables_for_match():
+                    return True
+            except Exception:
+                pass
+
             return False
         except Exception:
             return False
