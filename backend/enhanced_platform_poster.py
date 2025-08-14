@@ -1693,7 +1693,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 current_url = driver.current_url
                 page_text = driver.page_source.lower()
 
-                # Detect moderation/review acknowledgement FIRST – treat banner as definitive success
+                # Detect moderation/review acknowledgement FIRST – but verify inventory before claiming success
                 review_indicators = [
                     "screened by a proprietary fraud prevention system",
                     "reviewed in 24 hours",
@@ -1703,9 +1703,19 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 ]
                 if any(ind in page_text for ind in review_indicators):
                     banner = self._extract_cellpex_success_message() or "Submission accepted; pending moderation"
-                    print("🕒 Listing submitted; success banner detected")
-                    self._capture_step("listing_success_message", banner)
-                    return f"Success: {banner}"
+                    print("🕒 Listing submitted; review banner detected. Verifying inventory...")
+                    self._capture_step("listing_pending_review", banner)
+                    # IMPORTANT: verify presence in account even if review banner appears
+                    self._capture_step("inventory_check_start", f"Post-submit (review) at {current_url}")
+                    verified = self._verify_cellpex_listing(row)
+                    if verified:
+                        print("🎉 Listing verified in account after submission (review)")
+                        self._capture_step("listing_verified", "Verified listing appears in account")
+                        return f"Success: {banner} and verified in account"
+                    else:
+                        print("⚠️  Listing not visible in account yet after submission (review)")
+                        self._capture_step("listing_not_found", "Listing not found in inventory after submit (review)")
+                        return f"Pending: {banner} (not visible in account yet)"
 
                 # Generic error sniffing
                 error_indicators = [

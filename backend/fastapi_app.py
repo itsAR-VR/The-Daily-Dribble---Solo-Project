@@ -419,7 +419,7 @@ async def read_root():
     
     return {
         "message": "Multi-Platform Listing Bot API",
-        "version": "2.1.0-verify-review",
+        "version": "2.2.0-review-plus-verify",
         "chrome_status": chrome_status,
         "openai_status": openai_status,
         "gmail_status": gmail_status,
