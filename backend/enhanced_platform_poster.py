@@ -593,6 +593,41 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             return False
         except Exception:
             return False
+
+    def _try_pick_autocomplete(self, input_el, wait: WebDriverWait) -> bool:
+        """Try to select the first visible autocomplete suggestion for a text input.
+        Returns True if something was picked (by click or keys)."""
+        try:
+            # Wait briefly for suggestions to render
+            time.sleep(1.0)
+            # Try common containers
+            suggestion_xpaths = [
+                "//ul[contains(@class,'ui-autocomplete') and contains(@style,'display: block')]//li[1]",
+                "//ul[contains(@class,'ui-autocomplete')]//li[1]",
+                "//li[contains(@class,'ui-menu-item')][1]",
+                "//div[contains(@class,'autocomplete') or contains(@class,'suggest')]//li[1]"
+            ]
+            for sx in suggestion_xpaths:
+                try:
+                    el = self.driver.find_element(By.XPATH, sx)
+                    if el.is_displayed():
+                        self.driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", el)
+                        time.sleep(0.1)
+                        self.driver.execute_script("arguments[0].click();", el)
+                        return True
+                except Exception:
+                    continue
+            # Fallback to keyboard: ArrowDown + Enter
+            try:
+                input_el.send_keys("\ue015")  # Keys.ARROW_DOWN
+                time.sleep(0.1)
+                input_el.send_keys("\ue007")  # Keys.ENTER
+                return True
+            except Exception:
+                pass
+        except Exception:
+            pass
+        return False
     
     def login_with_2fa(self) -> bool:
         """Enhanced login with 2FA support - Cellpex specific implementation"""
@@ -1054,24 +1089,8 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         model_field.send_keys(chunk + " ")
                         time.sleep(0.3)
                     time.sleep(1.5)
-                    # Try to pick a suggestion item
-                    suggestion_xpaths = [
-                        "//ul[contains(@class,'ui-autocomplete')]//li[1]",
-                        "//li[contains(@class,'ui-menu-item')][1]",
-                        "//div[contains(@class,'autocomplete') or contains(@class,'suggest') ]//li[1]"
-                    ]
-                    picked = False
-                    for sx in suggestion_xpaths:
-                        try:
-                            sug = driver.find_element(By.XPATH, sx)
-                            if sug.is_displayed():
-                                driver.execute_script("arguments[0].scrollIntoView({behavior: 'instant', block: 'center'});", sug)
-                                time.sleep(0.2)
-                                driver.execute_script("arguments[0].click();", sug)
-                                picked = True
-                                break
-                        except Exception:
-                            continue
+                    # Try to pick a suggestion item (robust)
+                    picked = self._try_pick_autocomplete(model_field, wait)
                     if not picked:
                         # Fallback to JS set + change/blur events
                         driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input')); arguments[0].dispatchEvent(new Event('change')); arguments[0].blur();", model_field, product_name)
@@ -1099,7 +1118,9 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         var field = document.querySelector('[name="txtBrandModel"]');
                         if (field) {
                             field.value = arguments[0];
+                            field.dispatchEvent(new Event('input'));
                             field.dispatchEvent(new Event('change'));
+                            field.blur();
                         }
                     """, product_name)
                     print(f"✅ Product name set via JavaScript: {product_name}")
@@ -1504,6 +1525,10 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 "//a[contains(@onclick,'save') or contains(@onclick,'Save')]",
                 "//input[contains(translate(@value,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'save')]",
                 "//input[contains(translate(@value,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'submit')]",
+                "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'add')]",
+                "//a[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'add')]",
+                "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'post')]",
+                "//a[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'post')]",
                 # Common ASP.NET patterns
                 "[onclick*='__doPostBack']",
                 "input[id*='btn']",
