@@ -1672,7 +1672,17 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 if any(ind in page_text for ind in review_indicators):
                     print("🕒 Listing submitted and pending Cellpex review")
                     self._capture_step("listing_pending_review", "Submission accepted; pending moderation")
-                    return "Success: Submitted for review (may appear after moderation)"
+                    # IMPORTANT: Even if Cellpex shows a review banner, verify presence in account to avoid false positives
+                    self._capture_step("inventory_check_start", f"Post-submit (review) at {current_url}")
+                    verified = self._verify_cellpex_listing(row)
+                    if verified:
+                        print("🎉 Listing verified in account after submission (review)")
+                        self._capture_step("listing_verified", "Verified listing appears in account")
+                        return "Success: Submitted for review and verified in account"
+                    else:
+                        print("⚠️  Listing not visible in account yet after submission (review)")
+                        self._capture_step("listing_not_found", "Listing not found in inventory after submit (review)")
+                        return "Error: Submission accepted but listing not visible in account yet (pending moderation)"
 
                 # Generic error sniffing
                 error_indicators = [
