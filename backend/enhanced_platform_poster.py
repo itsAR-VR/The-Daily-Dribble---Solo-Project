@@ -937,24 +937,63 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             # Fill form fields based on discovered selectors
             print("📝 Filling listing form...")
             
-            # Category selection (selCateg)
+            # Category selection (selCateg) — support Cell Packs as well
             try:
                 category_select = wait.until(EC.presence_of_element_located((By.NAME, "selCateg")))
-                # Default to smartphones/mobile category
                 from selenium.webdriver.support.ui import Select
-                category_dropdown = Select(category_select)
-                # Try to select appropriate category
-                try:
-                    category_dropdown.select_by_visible_text("Cell Phones")
-                except:
+                requested_cat = str(row.get("category", "")).strip()
+                product_type = str(row.get("product_type", "")).strip().lower()
+                product_name_l = (str(row.get("product_name", "")).strip().lower())
+                ok = False
+                # 1) If caller provided a category, try that first (relaxed)
+                if requested_cat:
+                    ok = self._select_relaxed(category_select, [requested_cat])
+                # 2) Heuristics: prefer Cell Packs if indicated, else Cell Phones
+                if not ok:
+                    wants_packs = (
+                        ("pack" in requested_cat.lower()) or
+                        ("pack" in product_type) or
+                        ("pack" in product_name_l)
+                    )
+                    if wants_packs:
+                        ok = self._select_relaxed(category_select, [
+                            "Cell Packs", "Packs", "Cell Phone Packs", "Phone Packs"
+                        ])
+                    else:
+                        ok = self._select_relaxed(category_select, [
+                            "Cell Phones", "Cell Phones & Tablets", "Cell Phones / Tablets & Smartwatches"
+                        ]) or ok
+                # 3) Absolute fallback: first non-empty option
+                if not ok:
                     try:
-                        category_dropdown.select_by_index(1)  # First non-empty option
-                    except:
+                        Select(category_select).select_by_index(1)
+                        ok = True
+                    except Exception:
                         pass
-                print("✅ Category selected")
-                self._capture_step("category_selected", "Category selected")
+                if ok:
+                    picked_label = (requested_cat or ("Cell Packs" if 'pack' in (requested_cat.lower() if requested_cat else '') else "Cell Phones"))
+                    print("✅ Category selected")
+                    self._capture_step("category_selected", f"Category selected: {picked_label}")
+                else:
+                    print("⚠️  Category not selected (no matching option)")
             except Exception as e:
                 print(f"⚠️  Could not select category: {e}")
+
+            # Ensure SELL/WTS is selected if a radio exists
+            try:
+                wts_radios = driver.find_elements(By.XPATH, "//input[@type='radio'][contains(translate(@value,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'sell') or contains(translate(@value,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'wts')]")
+                if wts_radios:
+                    for r in wts_radios:
+                        try:
+                            if r.is_displayed():
+                                driver.execute_script("arguments[0].click();", r)
+                                print("✅ Selected Sell/WTS radio")
+                                self._capture_step("sell_radio_selected", "WTS/Sell selected")
+                                break
+                        except Exception:
+                            continue
+            except Exception:
+                pass
             
             # Brand selection (selBrand)
             try:
@@ -1754,17 +1793,22 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             # ASP.NET postback fallback if still not submitted
             if not submitted:
                 try:
-                    # Enumerate candidate controls to discover real event targets
+                    # Enumerate candidate controls to discover real event targets (broaden signals)
                     candidates = driver.find_elements(By.XPATH, "//input[@type='submit' or @type='button' or @type='image'] | //button | //a[@onclick]")
                     targets = []
                     for el in candidates:
                         try:
-                            txt = (el.get_attribute('value') or el.text or '')
+                            value_txt = el.get_attribute('value') or ''
+                            visible_txt = el.text or ''
                             id_attr = el.get_attribute('id') or ''
                             name_attr = el.get_attribute('name') or ''
+                            alt_attr = el.get_attribute('alt') or ''
+                            title_attr = el.get_attribute('title') or ''
                             onclick = el.get_attribute('onclick') or ''
-                            blob = f"txt={txt} id={id_attr} name={name_attr}"
-                            if any(k in (txt or '').lower() for k in ["save", "post", "submit", "add", "publish"]):
+                            combined = " ".join([value_txt, visible_txt, id_attr, name_attr, alt_attr, title_attr]).lower()
+                            blob = f"id={id_attr} name={name_attr} val={value_txt} txt={visible_txt} alt={alt_attr} title={title_attr}"
+                            keywords = ["save", "post", "submit", "add", "publish", "send", "confirm"]
+                            if any(k in combined for k in keywords):
                                 targets.append((el, id_attr, name_attr, onclick, blob))
                         except Exception:
                             continue
