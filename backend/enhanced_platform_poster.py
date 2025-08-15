@@ -421,61 +421,278 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
     LOGIN_URL = "https://www.gsmexchange.com/signin"
     
     def post_listing(self, row):
-        """Post listing with enhanced error handling"""
+        """Post listing on GSM Exchange (Phones > Add offer → I want to sell)."""
         driver = self.driver
         wait = WebDriverWait(driver, 20)
-        
+
+        def _try_pick_typeahead(input_el, text: str) -> bool:
+            try:
+                input_el.clear()
+                for chunk in text.split(" "):
+                    input_el.send_keys(chunk + " ")
+                    time.sleep(0.2)
+                time.sleep(1)
+                # Try dropdown item
+                try:
+                    dropdown = driver.find_element(By.CSS_SELECTOR, ".tt-dropdown-menu")
+                    if dropdown.is_displayed():
+                        try:
+                            first_item = dropdown.find_element(By.XPATH, ".//div|.//li")
+                            driver.execute_script("arguments[0].click();", first_item)
+                            return True
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                # Keyboard fallback
+                try:
+                    input_el.send_keys("\ue015")  # ArrowDown
+                    time.sleep(0.1)
+                    input_el.send_keys("\ue007")  # Enter
+                    return True
+                except Exception:
+                    return False
+            except Exception:
+                return False
+
         try:
-            # Navigate to listing page
-            driver.get("https://www.gsmexchange.com/gsm/post_offers.html")
-            
-            # Select "I want to sell"
-            sell_radio = wait.until(EC.element_to_be_clickable(
-                (By.CSS_SELECTOR, "input[value='sell']")
-            ))
-            sell_radio.click()
-            
-            # Fill in listing details
-            # Model/Product name
-            model_field = wait.until(EC.presence_of_element_located(
-                (By.NAME, "title")
-            ))
-            model_field.clear()
-            model_field.send_keys(str(row.get("product_name", "")))
-            
-            # Quantity
-            qty_field = driver.find_element(By.NAME, "qty")
-            qty_field.clear()
-            qty_field.send_keys(str(row.get("quantity", "")))
-            
-            # Price
-            price_field = driver.find_element(By.NAME, "price") 
-            price_field.clear()
-            price_field.send_keys(str(row.get("price", "")))
-            
-            # Condition - needs dropdown selection
-            condition_map = {
-                "New": "New",
-                "Used": "Used and tested",
-                "Refurbished": "Refurbished"
-            }
-            condition = row.get("condition", "New")
-            # Select condition from dropdown
-            
-            # Submit
-            submit_btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
-            submit_btn.click()
-            
-            # Wait for success
-            wait.until(EC.presence_of_element_located(
-                (By.XPATH, "//*[contains(text(),'successfully')]")
-            ))
-            
-            return "Success"
-            
+            # Navigate to phones page first (new UI), then fallback to legacy offers page
+            driver.get("https://www.gsmexchange.com/en/phones")
+            time.sleep(2)
+            self._capture_step("gsmx_phones", "Opened GSM Exchange phones page")
+            # Ensure the add-offer form exists; otherwise navigate to legacy
+            form_present = False
+            try:
+                driver.find_element(By.NAME, "phModelFull")
+                form_present = True
+            except Exception:
+                form_present = False
+            if not form_present:
+                driver.get("https://www.gsmexchange.com/gsm/post_offers.html")
+                time.sleep(2)
+                self._capture_step("gsmx_legacy", "Opened legacy post offers page")
+
+            # Pick SELL if radio is present
+            try:
+                sell_radio = driver.find_element(By.CSS_SELECTOR, "input[value='sell']")
+                if sell_radio.is_displayed():
+                    driver.execute_script("arguments[0].click();", sell_radio)
+                    self._capture_step("gsmx_sell", "Selected I want to sell")
+            except Exception:
+                pass
+
+            # Model autocomplete (phModelFull)
+            product_name = str(row.get("product_name") or row.get("model") or row.get("model_code") or "").strip()
+            if product_name:
+                try:
+                    model_input = wait.until(EC.presence_of_element_located((By.NAME, "phModelFull")))
+                    picked = _try_pick_typeahead(model_input, product_name)
+                    self._capture_step("gsmx_model", f"Model set: {product_name}{' (picked)' if picked else ''}")
+                except Exception:
+                    pass
+
+            # Quantity (phQty)
+            try:
+                qty_val = str(row.get("quantity", "1"))
+                qty_el = None
+                for loc in [(By.ID, "f-at-qty"), (By.NAME, "phQty")]:
+                    try:
+                        qty_el = driver.find_element(*loc)
+                        break
+                    except Exception:
+                        continue
+                if qty_el:
+                    qty_el.clear(); qty_el.send_keys(qty_val)
+                    self._capture_step("gsmx_qty", f"Quantity: {qty_val}")
+            except Exception:
+                pass
+
+            # Currency (phCurrency)
+            try:
+                currency = str(row.get("currency", "USD")).upper()
+                cur_el = None
+                for loc in [(By.ID, "f-at-currency"), (By.NAME, "phCurrency")]:
+                    try:
+                        cur_el = driver.find_element(*loc)
+                        break
+                    except Exception:
+                        continue
+                if cur_el:
+                    try:
+                        Select(cur_el).select_by_value(currency)
+                    except Exception:
+                        Select(cur_el).select_by_visible_text(currency)
+                    self._capture_step("gsmx_currency", f"Currency: {currency}")
+            except Exception:
+                pass
+
+            # Price (phPrice)
+            try:
+                price_val = str(row.get("price", ""))
+                price_el = None
+                for loc in [(By.ID, "f-at-price"), (By.NAME, "phPrice")]:
+                    try:
+                        price_el = driver.find_element(*loc)
+                        break
+                    except Exception:
+                        continue
+                if price_el:
+                    price_el.clear(); price_el.send_keys(price_val)
+                    self._capture_step("gsmx_price", f"Price: {price_val}")
+            except Exception:
+                pass
+
+            # Condition (phCondition)
+            try:
+                cond = str(row.get("condition", "New")).strip()
+                cond_map = {
+                    "new": "New",
+                    "used": "Used and tested",
+                    "refurbished": "Refurbished",
+                    "14-days": "7 day / 14 day",
+                    "14 days": "7 day / 14 day",
+                    "asis": "ASIS",
+                    "cpo": "CPO",
+                    "pre order": "Pre order",
+                }
+                desired = cond_map.get(cond.lower(), cond)
+                cond_el = None
+                for loc in [(By.ID, "f-at-condition"), (By.NAME, "phCondition")]:
+                    try:
+                        cond_el = driver.find_element(*loc)
+                        break
+                    except Exception:
+                        continue
+                if cond_el:
+                    ok = False
+                    try:
+                        Select(cond_el).select_by_visible_text(desired)
+                        ok = True
+                    except Exception:
+                        # relaxed contains
+                        options = Select(cond_el).options
+                        for i, o in enumerate(options):
+                            if desired.lower() in (o.text or "").lower():
+                                Select(cond_el).select_by_index(i)
+                                ok = True
+                                break
+                    if ok:
+                        self._capture_step("gsmx_condition", f"Condition: {desired}")
+            except Exception:
+                pass
+
+            # Specification (phSpec) from market_spec
+            try:
+                spec = str(row.get("market_spec", row.get("market", "US"))).strip().upper()
+                spec_map = {
+                    "US": "US spec.",
+                    "EURO": "Euro spec.",
+                    "EU": "Euro spec.",
+                    "UK": "UK spec.",
+                    "ASIA": "Asia spec.",
+                    "ARABIC": "Arab spec.",
+                    "ARAB": "Arab spec.",
+                    "INDIA": "Indian spec.",
+                    "INDIAN": "Indian spec.",
+                    "AFRICA": "African spec.",
+                    "LATIN": "Latin spec.",
+                    "JAPAN": "Japanese spec.",
+                    "JAPANESE": "Japanese spec.",
+                    "CHINA": "China spec.",
+                    "CANADA": "Canada Spec.",
+                    "GLOBAL": "Global Spec.",
+                    "OTHER": "Other spec.",
+                }
+                desired = spec_map.get(spec, "Global Spec.")
+                spec_el = None
+                for loc in [(By.ID, "f-at-spec"), (By.NAME, "phSpec")]:
+                    try:
+                        spec_el = driver.find_element(*loc)
+                        break
+                    except Exception:
+                        continue
+                if spec_el:
+                    ok = False
+                    try:
+                        Select(spec_el).select_by_visible_text(desired)
+                        ok = True
+                    except Exception:
+                        options = Select(spec_el).options
+                        for i, o in enumerate(options):
+                            if desired.lower() in (o.text or "").lower():
+                                Select(spec_el).select_by_index(i)
+                                ok = True
+                                break
+                    if ok:
+                        self._capture_step("gsmx_spec", f"Spec: {desired}")
+            except Exception:
+                pass
+
+            # Comments (phComments)
+            try:
+                comments = row.get("description") or ""
+                if not comments:
+                    comments = f"Condition: {row.get('condition','')} | Memory: {row.get('memory','')} | Color: {row.get('color','')}"
+                com_el = None
+                for loc in [(By.ID, "comments"), (By.NAME, "phComments")]:
+                    try:
+                        com_el = driver.find_element(*loc)
+                        break
+                    except Exception:
+                        continue
+                if com_el:
+                    com_el.clear(); com_el.send_keys(comments[:1000])
+                    self._capture_step("gsmx_comments", "Comments entered")
+            except Exception:
+                pass
+
+            # Confirm physical stock (confirm)
+            try:
+                cb = None
+                for loc in [(By.ID, "f-at-confirm"), (By.NAME, "confirm")]:
+                    try:
+                        cb = driver.find_element(*loc)
+                        break
+                    except Exception:
+                        continue
+                if cb and not cb.is_selected():
+                    driver.execute_script("arguments[0].click();", cb)
+                    self._capture_step("gsmx_confirm", "Confirmed physical stock")
+            except Exception:
+                pass
+
+            # Submit the offer
+            submitted = False
+            for loc in [
+                (By.CSS_SELECTOR, "button.primary.c-tOR-item[type='submit']"),
+                (By.XPATH, "//button[@type='submit' and contains(.,'New offer')]")
+            ]:
+                try:
+                    btn = driver.find_element(*loc)
+                    driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", btn)
+                    time.sleep(0.2)
+                    driver.execute_script("arguments[0].click();", btn)
+                    submitted = True
+                    self._capture_step("gsmx_submit", "Clicked New offer")
+                    break
+                except Exception:
+                    continue
+
+            if not submitted:
+                self._capture_step("gsmx_no_submit", "Submit button not found")
+                return "Error: Could not submit GSM Exchange offer"
+
+            # Wait for a success cue
+            time.sleep(4)
+            page = driver.page_source.lower()
+            if any(k in page for k in ["success", "created", "new offer", "posted"]):
+                return "Success: GSM Exchange offer posted"
+            return "Pending: Submitted offer; waiting for confirmation"
+
         except TimeoutException:
             return "Timeout posting listing"
         except Exception as e:
+            self._capture_step("gsmx_exception", str(e))
             return f"Error: {str(e)}"
 
 

@@ -420,6 +420,83 @@ export default function ListingBotUI() {
     console.log('🎯 All items and platforms processed!')
   }
 
+  const downloadExampleSheet = () => {
+    const header = [
+      'productType','category','brand','productName','modelCode','condition','memory','color','marketSpec','simLockStatus','carrier','price','currency','quantity','minimumOrderQuantity','supplyAbility','packaging','itemWeight','weightUnit','incoterm','allowLocalPickup','deliveryDays','country','state','description','keywords'
+    ]
+    const rows = [
+      ['phone','Smartphones','Apple','iPhone 14 Pro','A2890','New','256GB','Black','US','Unlocked','AT&T',999,'USD',10,1,'','Original Box',0.3,'kg','EXW',false,7,'United States','California','Premium device','Apple;iPhone;14 Pro']
+    ]
+    const csv = [header.join(','), ...rows.map(r=>r.map(v=>typeof v==='string' && v.includes(',')?`"${v}"`:v).join(','))].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'listing_template.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleSheetUpload = async (file: File) => {
+    const text = await file.text()
+    const lines = text.split(/\r?\n/).filter(Boolean)
+    if (lines.length < 2) return
+    const headers = lines[0].split(',').map(h=>h.trim())
+    const required = ['productType','category','brand','productName','modelCode','condition','price','currency','quantity','country']
+    const hasAll = required.every(h=>headers.includes(h))
+    if (!hasAll) {
+      alert(`Missing required headers. Required: ${required.join(', ')}`)
+      return
+    }
+    const idx = (h:string)=>headers.indexOf(h)
+    const newItems: ComprehensiveListingItem[] = lines.slice(1).map((line)=>{
+      const cols = line.split(',')
+      return {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+        productType: (cols[idx('productType')] as any) || 'phone',
+        category: cols[idx('category')] || '',
+        brand: cols[idx('brand')] || '',
+        productName: cols[idx('productName')] || '',
+        modelCode: cols[idx('modelCode')] || '',
+        condition: cols[idx('condition')] || 'New',
+        customCondition: '',
+        conditionGrade: 'A',
+        lcdDefects: 'None',
+        qualityCertification: '',
+        memory: cols[idx('memory')] || '128GB',
+        color: cols[idx('color')] || 'Black',
+        marketSpec: cols[idx('marketSpec')] || 'US',
+        simLockStatus: cols[idx('simLockStatus')] || 'Unlocked',
+        carrier: cols[idx('carrier')] || '',
+        price: parseFloat(cols[idx('price')] || '0') || 0,
+        currency: cols[idx('currency')] || 'USD',
+        quantity: parseInt(cols[idx('quantity')] || '1') || 1,
+        minimumOrderQuantity: parseInt(cols[idx('minimumOrderQuantity')] || '1') || 1,
+        supplyAbility: cols[idx('supplyAbility')] || '',
+        packaging: cols[idx('packaging')] || 'Original Box',
+        itemWeight: parseFloat(cols[idx('itemWeight')] || '0.3') || 0.3,
+        weightUnit: cols[idx('weightUnit')] || 'kg',
+        incoterm: cols[idx('incoterm')] || 'EXW',
+        allowLocalPickup: (cols[idx('allowLocalPickup')] || 'false').toLowerCase()==='true',
+        deliveryDays: parseInt(cols[idx('deliveryDays')] || '7') || 7,
+        country: cols[idx('country')] || 'United States',
+        state: cols[idx('state')] || '',
+        description: cols[idx('description')] || '',
+        keywords: (cols[idx('keywords')] || '').split(/;|,/).filter(Boolean),
+        photos: [],
+        photoUrls: [],
+        acceptedPayments: ['PayPal'],
+        autoShareLinkedIn: false,
+        autoShareTwitter: false,
+        selectedPlatforms: [],
+        platformStatuses: {},
+        privateNotes: '',
+        manufacturerType: 'not_specified',
+      }
+    })
+    setItems([...items, ...newItems])
+  }
+
   return (
     <div className="container mx-auto p-6 max-w-6xl">
       {/* Gmail Connect Section */}
@@ -455,6 +532,17 @@ export default function ListingBotUI() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Upload from Sheet */}
+          <div className="p-4 border rounded-md">
+            <h4 className="font-semibold mb-2">Bulk upload from sheet</h4>
+            <p className="text-sm mb-3">Upload a CSV exported from Excel/Google Sheets with the following headers in order:</p>
+            <pre className="text-xs bg-muted p-2 rounded mb-3 overflow-x-auto">productType,category,brand,productName,modelCode,condition,memory,color,marketSpec,simLockStatus,carrier,price,currency,quantity,minimumOrderQuantity,supplyAbility,packaging,itemWeight,weightUnit,incoterm,allowLocalPickup,deliveryDays,country,state,description,keywords</pre>
+            <div className="flex gap-3 items-center">
+              <input type="file" accept=".csv" onChange={(e)=>{ const f=e.target.files?.[0]; if (f) handleSheetUpload(f) }} />
+              <Button variant="outline" onClick={downloadExampleSheet}>Download example CSV</Button>
+            </div>
+          </div>
+
           {items.map((item, index) => (
             <Card key={item.id} className="p-6 space-y-6">
               <div className="flex justify-between items-center">
