@@ -594,8 +594,9 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
         except Exception:
             return False
 
-    def _try_pick_autocomplete(self, input_el, wait: WebDriverWait) -> bool:
-        """Try to select the first visible autocomplete suggestion for a text input.
+    def _try_pick_autocomplete(self, input_el, wait: WebDriverWait, desired_text: str | None = None) -> bool:
+        """Try to select an autocomplete suggestion for a text input.
+        Preference order: a suggestion matching desired_text, otherwise the first visible item.
         Returns True if something was picked (by click or keys)."""
         try:
             # Wait briefly for suggestions to render
@@ -607,6 +608,23 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 "//li[contains(@class,'ui-menu-item')][1]",
                 "//div[contains(@class,'autocomplete') or contains(@class,'suggest')]//li[1]"
             ]
+            # If we know the desired text, look for any suggestion item that matches it
+            if desired_text:
+                try:
+                    sug_items = self.driver.find_elements(By.XPATH, "//ul[contains(@class,'ui-autocomplete')]//li | //li[contains(@class,'ui-menu-item')] | //div[contains(@class,'autocomplete') or contains(@class,'suggest')]//li")
+                    for it in sug_items:
+                        try:
+                            if it.is_displayed():
+                                txt = (it.text or "").strip().lower()
+                                if txt and all(t in txt for t in desired_text.lower().split()[:2]):
+                                    self.driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", it)
+                                    time.sleep(0.1)
+                                    self.driver.execute_script("arguments[0].click();", it)
+                                    return True
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
             for sx in suggestion_xpaths:
                 try:
                     el = self.driver.find_element(By.XPATH, sx)
@@ -1090,7 +1108,28 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         time.sleep(0.3)
                     time.sleep(1.5)
                     # Try to pick a suggestion item (robust)
-                    picked = self._try_pick_autocomplete(model_field, wait)
+                    picked = self._try_pick_autocomplete(model_field, wait, product_name)
+                    # If we typed but didn't pick a suggestion, verify any hidden IDs were set; if not, force-pick first
+                    if not picked:
+                        try:
+                            hidden_ok = False
+                            for hf in driver.find_elements(By.CSS_SELECTOR, "input[type='hidden']"):
+                                try:
+                                    name = (hf.get_attribute('name') or hf.get_attribute('id') or '').lower()
+                                    val = (hf.get_attribute('value') or '').strip()
+                                    if name and val and any(tok in name for tok in ['modelid','brandid','itemid','hdnmodel','hdnbrand']):
+                                        hidden_ok = True
+                                        break
+                                except Exception:
+                                    continue
+                            if not hidden_ok:
+                                # Try keyboard selection to ensure a suggestion is chosen
+                                model_field.send_keys("\ue015")
+                                time.sleep(0.1)
+                                model_field.send_keys("\ue007")
+                                picked = True
+                        except Exception:
+                            pass
                     if not picked:
                         # Fallback to JS set + change/blur events
                         driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input')); arguments[0].dispatchEvent(new Event('change')); arguments[0].blur();", model_field, product_name)
@@ -1174,18 +1213,36 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             except Exception:
                 pass
 
-            # Explicitly handle Cellpex Available Date text field (txtAvailable -> MM/DD/YYYY)
+            # Explicitly handle Cellpex Available Date text field (txtAvailable -> MM/DD/YYYY) with robust JS
             try:
                 from datetime import datetime as _dt
-                available_value = _dt.now().strftime('%m/%d/%Y')
-                try:
-                    avail_field = driver.find_element(By.NAME, "txtAvailable")
-                    avail_field.clear()
-                    avail_field.send_keys(available_value)
-                    print(f"✅ Available Date entered: {available_value}")
-                    self._capture_step("available_date_entered", f"Available: {available_value}")
-                except Exception:
-                    pass
+                available_value = str(row.get('available_from') or _dt.now().strftime('%m/%d/%Y'))
+                locators = [
+                    (By.NAME, 'txtAvailable'), (By.ID, 'txtAvailable'),
+                    (By.CSS_SELECTOR, "input[name*='Available' i]")
+                ]
+                set_ok = False
+                for loc in locators:
+                    try:
+                        el = driver.find_element(*loc)
+                        driver.execute_script(
+                            "try{arguments[0].removeAttribute('readonly')}catch(e){};"
+                            "arguments[0].value = arguments[1];"
+                            "arguments[0].dispatchEvent(new Event('input',{bubbles:true}));"
+                            "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));"
+                            "arguments[0].blur();",
+                            el, available_value
+                        )
+                        time.sleep(0.1)
+                        set_ok = True
+                        break
+                    except Exception:
+                        continue
+                if set_ok:
+                    print(f"✅ Available From set: {available_value}")
+                    self._capture_step('available_date_entered', f"Available: {available_value}")
+                else:
+                    print("⚠️  Could not locate Available From input")
             except Exception:
                 pass
 
@@ -1269,21 +1326,39 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 pass
 
             try:
-                desired_sim = str(row.get("sim_lock_status", row.get("sim_lock", "Unlocked"))).strip()
-                for name in ["selSim", "selSimLock", "selSIMlock", "simlock", "SIM", "SIM Lock"]:
+                desired_sim = (str(row.get('sim_lock_status') or row.get('sim_lock') or 'Unlocked')).strip() or 'Unlocked'
+                sim_names = [
+                    'selSim','selSIM','selSimLock','selSIMLock','selSimType','simlock','simLock','SELLOCK','SIM','SIM Lock'
+                ]
+                sim_select = None
+                for nm in sim_names:
                     try:
-                        sim_select = driver.find_element(By.NAME, name)
-                        ok = False
-                        try:
-                            Select(sim_select).select_by_visible_text(desired_sim)
-                            ok = True
-                        except Exception:
-                            ok = self._select_relaxed(sim_select, [desired_sim, desired_sim.upper(), desired_sim.capitalize()])
-                        if ok:
-                            print(f"✅ SIM Lock selected: {desired_sim}")
-                            break
+                        sim_select = driver.find_element(By.NAME, nm)
+                        break
                     except Exception:
                         continue
+                if not sim_select:
+                    try:
+                        sim_select = driver.find_element(By.XPATH, "//select[option and (contains(.,'Unlocked') or contains(.,'Locked'))]")
+                    except Exception:
+                        sim_select = None
+                if sim_select:
+                    labels = [desired_sim, 'Factory Unlocked','Unlocked','SIM Free','Network Unlocked','Locked']
+                    ok = False
+                    for label in labels:
+                        try:
+                            Select(sim_select).select_by_visible_text(label)
+                            ok = True
+                            break
+                        except Exception:
+                            continue
+                    if not ok:
+                        ok = self._select_relaxed(sim_select, labels + [desired_sim.upper(), desired_sim.capitalize()])
+                    if ok:
+                        print(f"✅ SIM Lock selected: {desired_sim}")
+                        self._capture_step('sim_lock_selected', desired_sim)
+                    else:
+                        print("⚠️  Could not select SIM lock option")
             except Exception:
                 pass
 
