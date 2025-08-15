@@ -937,7 +937,32 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             # Fill form fields based on discovered selectors
             print("📝 Filling listing form...")
             
-            # Category selection (selCateg) — support Cell Packs as well
+            # Section selection: PHONES & TABLETS (1), ACCESSORIES (2), GADGETS (G)
+            section_mode = 'phones_tablets'
+            try:
+                section_raw = str(row.get('section') or row.get('product_type') or row.get('category') or '').lower()
+                desired_section = '1'
+                if any(k in section_raw for k in ['accessor', 'accessories']):
+                    desired_section = '2'
+                elif any(k in section_raw for k in ['gadget', 'gadgets']):
+                    desired_section = 'G'
+                # Allow explicit override
+                desired_section = str(row.get('selSection') or row.get('selSectionValue') or desired_section)
+                radios = driver.find_elements(By.NAME, 'selSection')
+                for r in radios:
+                    try:
+                        if (r.get_attribute('value') or '').upper() == desired_section.upper():
+                            driver.execute_script("arguments[0].click();", r)
+                            section_mode = 'accessories' if desired_section == '2' else ('gadgets' if desired_section.upper() == 'G' else 'phones_tablets')
+                            self._capture_step('section_selected', f'Section {section_mode}')
+                            time.sleep(0.6)  # let form switch
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            
+            # Category selection (selCateg) — support Cell Packs and Accessories/Gadgets
             try:
                 category_select = wait.until(EC.presence_of_element_located((By.NAME, "selCateg")))
                 from selenium.webdriver.support.ui import Select
@@ -948,21 +973,26 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 # 1) If caller provided a category, try that first (relaxed)
                 if requested_cat:
                     ok = self._select_relaxed(category_select, [requested_cat])
-                # 2) Heuristics: prefer Cell Packs if indicated, else Cell Phones
+                # 2) Heuristics by section
                 if not ok:
-                    wants_packs = (
-                        ("pack" in requested_cat.lower()) or
-                        ("pack" in product_type) or
-                        ("pack" in product_name_l)
-                    )
-                    if wants_packs:
-                        ok = self._select_relaxed(category_select, [
-                            "Cell Packs", "Packs", "Cell Phone Packs", "Phone Packs"
-                        ])
+                    if section_mode in ('accessories', 'gadgets'):
+                        # No default; just pick first non-empty if nothing specified
+                        ok = False
                     else:
-                        ok = self._select_relaxed(category_select, [
-                            "Cell Phones", "Cell Phones & Tablets", "Cell Phones / Tablets & Smartwatches"
-                        ]) or ok
+                        # Phones & Tablets: prefer Cell Packs if indicated, else Cell Phones
+                        wants_packs = (
+                            ("pack" in requested_cat.lower()) or
+                            ("pack" in product_type) or
+                            ("pack" in product_name_l)
+                        )
+                        if wants_packs:
+                            ok = self._select_relaxed(category_select, [
+                                "Cell Packs", "Packs", "Cell Phone Packs", "Phone Packs"
+                            ])
+                        else:
+                            ok = self._select_relaxed(category_select, [
+                                "Cell Phones", "Cell Phones & Tablets", "Cell Phones / Tablets & Smartwatches"
+                            ]) or ok
                 # 3) Absolute fallback: first non-empty option
                 if not ok:
                     try:
@@ -971,7 +1001,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     except Exception:
                         pass
                 if ok:
-                    picked_label = (requested_cat or ("Cell Packs" if 'pack' in (requested_cat.lower() if requested_cat else '') else "Cell Phones"))
+                    picked_label = requested_cat or ("(auto)" if section_mode in ('accessories','gadgets') else ("Cell Packs" if 'pack' in (requested_cat.lower() if requested_cat else '') else "Cell Phones"))
                     print("✅ Category selected")
                     self._capture_step("category_selected", f"Category selected: {picked_label}")
                 else:
@@ -1011,6 +1041,56 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 self._capture_step("brand_selected", f"Brand selected: {brand}")
             except Exception as e:
                 print(f"⚠️  Could not select brand: {e}")
+
+            # Accessories/Gadgets specific fields: txtCode, txtBrand (optional), txtModel
+            if section_mode in ('accessories', 'gadgets'):
+                # Name or code
+                try:
+                    code_value = str(row.get('code') or row.get('product_code') or row.get('product_name') or row.get('model') or '').strip()[:39]
+                    if code_value:
+                        code_el = None
+                        for loc in [(By.ID, 'txtCode'), (By.NAME, 'txtCode')]:
+                            try:
+                                code_el = driver.find_element(*loc)
+                                break
+                            except Exception:
+                                continue
+                        if code_el:
+                            code_el.clear()
+                            code_el.send_keys(code_value)
+                            print(f"✅ Name/Code entered: {code_value}")
+                            self._capture_step('code_entered', f'Code/Name: {code_value}')
+                except Exception:
+                    pass
+                # Optional brand text field
+                try:
+                    brand_text = str(row.get('brand', '')).strip()[:39]
+                    if brand_text:
+                        for loc in [(By.ID, 'txtBrand'), (By.NAME, 'txtBrand')]:
+                            try:
+                                b = driver.find_element(*loc)
+                                b.clear(); b.send_keys(brand_text)
+                                print("✅ Brand text entered")
+                                break
+                            except Exception:
+                                continue
+                except Exception:
+                    pass
+                # Model text field
+                try:
+                    model_text = str(row.get('model') or row.get('product_name') or '').strip()[:39]
+                    if model_text:
+                        for loc in [(By.ID, 'txtModel'), (By.NAME, 'txtModel')]:
+                            try:
+                                m = driver.find_element(*loc)
+                                m.clear(); m.send_keys(model_text)
+                                print("✅ Model entered")
+                                self._capture_step('model_entered', f'Model: {model_text}')
+                                break
+                            except Exception:
+                                continue
+                except Exception:
+                    pass
             
             # Available quantity: use quantity-specific fields (NOT txtAvailable)
             try:
@@ -1121,8 +1201,9 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             except Exception as e:
                 print(f"⚠️  Could not select condition: {e}")
 
-            # Brand/Model description (txtBrandModel) with autocomplete selection
-            try:
+            # Brand/Model description (txtBrandModel) with autocomplete selection (Phones & Tablets only)
+            if section_mode == 'phones_tablets':
+                try:
                 human_product = str(row.get('product_name') or '').strip()
                 brand_val = str(row.get('brand', '')).strip()
                 fallback_model = f"{brand_val or 'Apple'} {row.get('model', 'iPhone 14 Pro')}".strip()
@@ -1208,8 +1289,8 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     """, product_name)
                     print(f"✅ Product name set via JavaScript: {product_name}")
                     self._capture_step("product_name_set", f"Product name: {product_name}")
-            except Exception as e:
-                print(f"⚠️  Skipping product name due to: {e}")
+                except Exception as e:
+                    print(f"⚠️  Skipping product name due to: {e}")
             
             # Comments/Description (areaComments) - Use JavaScript injection for reliability
             try:
