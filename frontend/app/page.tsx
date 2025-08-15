@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 
 const API_BASE_URL = "https://listing-bot-api-production.up.railway.app"
 
@@ -489,24 +490,25 @@ export default function ListingBotUI() {
 
                 <TabsContent value="basic" className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
-                    {/* Product Type */}
+                    {/* Product Type (prominent three-selector) */}
                     <div className="space-y-2">
-                      <Label>Product Type</Label>
-                      <Select
+                      <Label>Category</Label>
+                      <ToggleGroup
+                        type="single"
                         value={item.productType}
-                        onValueChange={(value: "phone" | "accessory" | "gadget") => 
-                          updateItem(item.id, { productType: value, category: value === "phone" ? "Smartphones" : value === "accessory" ? "Antennas" : "Accessories" })
-                        }
+                        onValueChange={(value) => {
+                          if (!value) return
+                          updateItem(item.id, {
+                            productType: value as any,
+                            category: value === "phone" ? "Smartphones" : value === "accessory" ? "Antennas" : "Gadgets"
+                          })
+                        }}
+                        className="flex gap-2"
                       >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="phone">Phone/Tablet</SelectItem>
-                          <SelectItem value="accessory">Accessory</SelectItem>
-                          <SelectItem value="gadget">Gadget</SelectItem>
-                        </SelectContent>
-                      </Select>
+                        <ToggleGroupItem value="phone" aria-label="Smartphones">Smartphones</ToggleGroupItem>
+                        <ToggleGroupItem value="accessory" aria-label="Accessories">Accessories</ToggleGroupItem>
+                        <ToggleGroupItem value="gadget" aria-label="Gadgets">Gadgets</ToggleGroupItem>
+                      </ToggleGroup>
                     </div>
 
                     {/* Category */}
@@ -630,135 +632,149 @@ export default function ListingBotUI() {
                       )}
                     </div>
 
-                    {/* Condition Grade */}
-                    <div className="space-y-2">
-                      <Label>Grade</Label>
-                      <Select
-                        value={item.conditionGrade}
-                        onValueChange={(value) => updateItem(item.id, { conditionGrade: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CONDITION_GRADES.map((grade) => (
-                            <SelectItem key={grade} value={grade}>
-                              Grade {grade}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {/* Condition Grade (phones only) */}
+                    {item.productType === "phone" && (
+                      <div className="space-y-2">
+                        <Label>Grade</Label>
+                        <Select
+                          value={item.conditionGrade}
+                          onValueChange={(value) => updateItem(item.id, { conditionGrade: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CONDITION_GRADES.map((grade) => (
+                              <SelectItem key={grade} value={grade}>
+                                Grade {grade}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
-                    {/* LCD Defects */}
-                    <div className="space-y-2">
-                      <Label>LCD Defects</Label>
-                      <Select
-                        value={item.lcdDefects}
-                        onValueChange={(value) => updateItem(item.id, { lcdDefects: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {LCD_DEFECTS.map((defect) => (
-                            <SelectItem key={defect} value={defect}>
-                              {defect}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {/* LCD Defects (phones only) */}
+                    {item.productType === "phone" && (
+                      <div className="space-y-2">
+                        <Label>LCD Defects</Label>
+                        <Select
+                          value={item.lcdDefects}
+                          onValueChange={(value) => updateItem(item.id, { lcdDefects: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {LCD_DEFECTS.map((defect) => (
+                              <SelectItem key={defect} value={defect}>
+                                {defect}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
-                    {/* Memory */}
-                    <div className="space-y-2">
-                      <Label>Memory/Storage</Label>
-                      <Select
-                        value={item.memory}
-                        onValueChange={(value) => updateItem(item.id, { memory: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {MEMORY_OPTIONS.map((memory) => (
-                            <SelectItem key={memory} value={memory}>
-                              {memory}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {/* Memory (phones only) */}
+                    {item.productType === "phone" && (
+                      <div className="space-y-2">
+                        <Label>Memory/Storage</Label>
+                        <Select
+                          value={item.memory}
+                          onValueChange={(value) => updateItem(item.id, { memory: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {MEMORY_OPTIONS.map((memory) => (
+                              <SelectItem key={memory} value={memory}>
+                                {memory}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
-                    {/* Color */}
-                    <div className="space-y-2">
-                      <Label>Color</Label>
-                      <Select
-                        value={item.color}
-                        onValueChange={(value) => updateItem(item.id, { color: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {COLORS.map((color) => (
-                            <SelectItem key={color} value={color}>
-                              {color}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {/* Color (phones only) */}
+                    {item.productType === "phone" && (
+                      <div className="space-y-2">
+                        <Label>Color</Label>
+                        <Select
+                          value={item.color}
+                          onValueChange={(value) => updateItem(item.id, { color: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {COLORS.map((color) => (
+                              <SelectItem key={color} value={color}>
+                                {color}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
-                    {/* Market Spec */}
-                    <div className="space-y-2">
-                      <Label>Market Spec</Label>
-                      <Select
-                        value={item.marketSpec}
-                        onValueChange={(value) => updateItem(item.id, { marketSpec: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {MARKET_SPECS.map((spec) => (
-                            <SelectItem key={spec} value={spec}>
-                              {spec}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {/* Market Spec (phones only) */}
+                    {item.productType === "phone" && (
+                      <div className="space-y-2">
+                        <Label>Market Spec</Label>
+                        <Select
+                          value={item.marketSpec}
+                          onValueChange={(value) => updateItem(item.id, { marketSpec: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {MARKET_SPECS.map((spec) => (
+                              <SelectItem key={spec} value={spec}>
+                                {spec}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
-                    {/* SIM Lock Status */}
-                    <div className="space-y-2">
-                      <Label>SIM Lock Status</Label>
-                      <Select
-                        value={item.simLockStatus}
-                        onValueChange={(value) => updateItem(item.id, { simLockStatus: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SIM_LOCK_STATUS.map((status) => (
-                            <SelectItem key={status} value={status}>
-                              {status}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {/* SIM Lock Status (phones only) */}
+                    {item.productType === "phone" && (
+                      <div className="space-y-2">
+                        <Label>SIM Lock Status</Label>
+                        <Select
+                          value={item.simLockStatus}
+                          onValueChange={(value) => updateItem(item.id, { simLockStatus: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SIM_LOCK_STATUS.map((status) => (
+                              <SelectItem key={status} value={status}>
+                                {status}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
-                    {/* Carrier */}
-                    <div className="space-y-2">
-                      <Label>Carrier</Label>
-                      <Input
-                        value={item.carrier}
-                        onChange={(e) => updateItem(item.id, { carrier: e.target.value })}
-                        placeholder="e.g., AT&T, Verizon"
-                      />
-                    </div>
+                    {/* Carrier (phones only) */}
+                    {item.productType === "phone" && (
+                      <div className="space-y-2">
+                        <Label>Carrier</Label>
+                        <Input
+                          value={item.carrier}
+                          onChange={(e) => updateItem(item.id, { carrier: e.target.value })}
+                          placeholder="e.g., AT&T, Verizon"
+                        />
+                      </div>
+                    )}
 
                     {/* Quality Certification */}
                     <div className="space-y-2">
