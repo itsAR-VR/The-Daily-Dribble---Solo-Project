@@ -1204,91 +1204,91 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             # Brand/Model description (txtBrandModel) with autocomplete selection (Phones & Tablets only)
             if section_mode == 'phones_tablets':
                 try:
-                human_product = str(row.get('product_name') or '').strip()
-                brand_val = str(row.get('brand', '')).strip()
-                fallback_model = f"{brand_val or 'Apple'} {row.get('model', 'iPhone 14 Pro')}".strip()
-                # Ensure the brand is included in the search text so autocomplete recognizes it
-                if human_product and brand_val and brand_val.lower() not in human_product.lower():
-                    product_name = f"{brand_val} {human_product}".strip()
-                else:
-                    product_name = human_product or fallback_model
-                # Prefer interactive typing to trigger autocomplete
-                model_field = None
-                for locator in [
-                    (By.NAME, "txtBrandModel"),
-                    (By.ID, "txtBrandModel"),
-                    (By.CSS_SELECTOR, "input[name*='BrandModel' i]")
-                ]:
-                    try:
-                        model_field = driver.find_element(*locator)
-                        break
-                    except Exception:
-                        continue
-                if model_field:
-                    model_field.clear()
-                    model_field.click()
-                    # Type slowly to trigger suggestions
-                    for chunk in product_name.split(" "):
-                        model_field.send_keys(chunk + " ")
-                        time.sleep(0.3)
-                    time.sleep(1.5)
-                    # Try to pick a suggestion item (robust)
-                    picked = self._try_pick_autocomplete(model_field, wait, product_name)
-                    # If we typed but didn't pick a suggestion, verify any hidden IDs were set; if not, force-pick first
-                    if not picked:
+                    human_product = str(row.get('product_name') or '').strip()
+                    brand_val = str(row.get('brand', '')).strip()
+                    fallback_model = f"{brand_val or 'Apple'} {row.get('model', 'iPhone 14 Pro')}".strip()
+                    # Ensure the brand is included in the search text so autocomplete recognizes it
+                    if human_product and brand_val and brand_val.lower() not in human_product.lower():
+                        product_name = f"{brand_val} {human_product}".strip()
+                    else:
+                        product_name = human_product or fallback_model
+                    # Prefer interactive typing to trigger autocomplete
+                    model_field = None
+                    for locator in [
+                        (By.NAME, "txtBrandModel"),
+                        (By.ID, "txtBrandModel"),
+                        (By.CSS_SELECTOR, "input[name*='BrandModel' i]")
+                    ]:
                         try:
-                            hidden_ok = False
-                            for hf in driver.find_elements(By.CSS_SELECTOR, "input[type='hidden']"):
+                            model_field = driver.find_element(*locator)
+                            break
+                        except Exception:
+                            continue
+                    if model_field:
+                        model_field.clear()
+                        model_field.click()
+                        # Type slowly to trigger suggestions
+                        for chunk in product_name.split(" "):
+                            model_field.send_keys(chunk + " ")
+                            time.sleep(0.3)
+                        time.sleep(1.5)
+                        # Try to pick a suggestion item (robust)
+                        picked = self._try_pick_autocomplete(model_field, wait, product_name)
+                        # If we typed but didn't pick a suggestion, verify any hidden IDs were set; if not, force-pick first
+                        if not picked:
+                            try:
+                                hidden_ok = False
+                                for hf in driver.find_elements(By.CSS_SELECTOR, "input[type='hidden']"):
+                                    try:
+                                        name = (hf.get_attribute('name') or hf.get_attribute('id') or '').lower()
+                                        val = (hf.get_attribute('value') or '').strip()
+                                        if name and val and any(tok in name for tok in ['modelid','brandid','itemid','hdnmodel','hdnbrand']):
+                                            hidden_ok = True
+                                            break
+                                    except Exception:
+                                        continue
+                                if not hidden_ok:
+                                    # Try keyboard selection to ensure a suggestion is chosen
+                                    model_field.send_keys("\ue015")
+                                    time.sleep(0.1)
+                                    model_field.send_keys("\ue007")
+                                    picked = True
+                            except Exception:
+                                pass
+                        if not picked:
+                            # Fallback to JS set + change/blur events
+                            driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input')); arguments[0].dispatchEvent(new Event('change')); arguments[0].blur();", model_field, product_name)
+                        print(f"✅ Product name set: {product_name} {'(picked suggestion)' if picked else '(direct)'}")
+                        self._capture_step("product_name_set", f"Product name: {product_name}")
+                        # Inspect potential hidden fields that autocomplete may set
+                        try:
+                            hidden_fields = driver.find_elements(By.CSS_SELECTOR, "input[type='hidden']")
+                            hidden_summary = []
+                            for hf in hidden_fields:
                                 try:
-                                    name = (hf.get_attribute('name') or hf.get_attribute('id') or '').lower()
-                                    val = (hf.get_attribute('value') or '').strip()
-                                    if name and val and any(tok in name for tok in ['modelid','brandid','itemid','hdnmodel','hdnbrand']):
-                                        hidden_ok = True
-                                        break
+                                    name = hf.get_attribute('name') or hf.get_attribute('id')
+                                    val = (hf.get_attribute('value') or '')[:40]
+                                    if name and val:
+                                        hidden_summary.append(f"{name}={val}")
                                 except Exception:
                                     continue
-                            if not hidden_ok:
-                                # Try keyboard selection to ensure a suggestion is chosen
-                                model_field.send_keys("\ue015")
-                                time.sleep(0.1)
-                                model_field.send_keys("\ue007")
-                                picked = True
+                            if hidden_summary:
+                                self._capture_step("hidden_fields", ", ".join(hidden_summary[:8]))
                         except Exception:
                             pass
-                    if not picked:
-                        # Fallback to JS set + change/blur events
-                        driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input')); arguments[0].dispatchEvent(new Event('change')); arguments[0].blur();", model_field, product_name)
-                    print(f"✅ Product name set: {product_name} {'(picked suggestion)' if picked else '(direct)'}")
-                    self._capture_step("product_name_set", f"Product name: {product_name}")
-                    # Inspect potential hidden fields that autocomplete may set
-                    try:
-                        hidden_fields = driver.find_elements(By.CSS_SELECTOR, "input[type='hidden']")
-                        hidden_summary = []
-                        for hf in hidden_fields:
-                            try:
-                                name = hf.get_attribute('name') or hf.get_attribute('id')
-                                val = (hf.get_attribute('value') or '')[:40]
-                                if name and val:
-                                    hidden_summary.append(f"{name}={val}")
-                            except Exception:
-                                continue
-                        if hidden_summary:
-                            self._capture_step("hidden_fields", ", ".join(hidden_summary[:8]))
-                    except Exception:
-                        pass
-                else:
-                    # Last resort JS injection
-                    driver.execute_script("""
-                        var field = document.querySelector('[name="txtBrandModel"]');
-                        if (field) {
-                            field.value = arguments[0];
-                            field.dispatchEvent(new Event('input'));
-                            field.dispatchEvent(new Event('change'));
-                            field.blur();
-                        }
-                    """, product_name)
-                    print(f"✅ Product name set via JavaScript: {product_name}")
-                    self._capture_step("product_name_set", f"Product name: {product_name}")
+                    else:
+                        # Last resort JS injection
+                        driver.execute_script("""
+                            var field = document.querySelector('[name="txtBrandModel"]');
+                            if (field) {
+                                field.value = arguments[0];
+                                field.dispatchEvent(new Event('input'));
+                                field.dispatchEvent(new Event('change'));
+                                field.blur();
+                            }
+                        """, product_name)
+                        print(f"✅ Product name set via JavaScript: {product_name}")
+                        self._capture_step("product_name_set", f"Product name: {product_name}")
                 except Exception as e:
                     print(f"⚠️  Skipping product name due to: {e}")
             
