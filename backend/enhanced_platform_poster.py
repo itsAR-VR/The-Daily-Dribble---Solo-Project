@@ -1085,8 +1085,13 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             # Brand/Model description (txtBrandModel) with autocomplete selection
             try:
                 human_product = str(row.get('product_name') or '').strip()
-                fallback_model = f"{row.get('brand', 'Apple')} {row.get('model', 'iPhone 14 Pro')}".strip()
-                product_name = human_product or fallback_model
+                brand_val = str(row.get('brand', '')).strip()
+                fallback_model = f"{brand_val or 'Apple'} {row.get('model', 'iPhone 14 Pro')}".strip()
+                # Ensure the brand is included in the search text so autocomplete recognizes it
+                if human_product and brand_val and brand_val.lower() not in human_product.lower():
+                    product_name = f"{brand_val} {human_product}".strip()
+                else:
+                    product_name = human_product or fallback_model
                 # Prefer interactive typing to trigger autocomplete
                 model_field = None
                 for locator in [
@@ -1399,6 +1404,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 state_value = str(row.get("state", "Florida")).strip()
                 for locator in [
                     (By.NAME, "state"),
+                    (By.NAME, "txtState"),
                     (By.CSS_SELECTOR, "input[name*='state' i]")
                 ]:
                     try:
@@ -1409,6 +1415,27 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         break
                     except Exception:
                         continue
+            except Exception:
+                pass
+
+            # Allow local pickup checkbox
+            try:
+                desired_pickup = bool(row.get('allow_local_pickup', False))
+                cb = None
+                for loc in [
+                    (By.NAME, 'chkLocalPickup'),
+                    (By.ID, 'chkLocalPickup'),
+                    (By.CSS_SELECTOR, "input[type='checkbox'][name*='pickup' i]")
+                ]:
+                    try:
+                        cb = driver.find_element(*loc)
+                        break
+                    except Exception:
+                        continue
+                if cb:
+                    if cb.is_selected() != desired_pickup:
+                        driver.execute_script("arguments[0].click();", cb)
+                    print(f"✅ Local pickup set: {desired_pickup}")
             except Exception:
                 pass
 
