@@ -511,6 +511,58 @@ export default function ListingBotUI() {
                       </ToggleGroup>
                     </div>
 
+                    {/* Platforms (inline per item) */}
+                    <div className="space-y-2">
+                      <Label>Post to Platforms</Label>
+                      <div className="space-y-1">
+                        {["hubx", "gsmexchange", "kardof", "cellpex", "handlot"].map((platform) => (
+                          <div key={platform} className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <Checkbox
+                                checked={item.selectedPlatforms.includes(platform)}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    updateItem(item.id, {
+                                      selectedPlatforms: [...item.selectedPlatforms, platform],
+                                    })
+                                  } else {
+                                    updateItem(item.id, {
+                                      selectedPlatforms: item.selectedPlatforms.filter((p) => p !== platform),
+                                    })
+                                  }
+                                }}
+                              />
+                              <Label className="capitalize">{platform}</Label>
+                            </div>
+                            {item.platformStatuses[platform] && (
+                              <Badge
+                                variant={
+                                  item.platformStatuses[platform].status === "success"
+                                    ? "default"
+                                    : item.platformStatuses[platform].status === "error"
+                                    ? "destructive"
+                                    : item.platformStatuses[platform].status === "posting"
+                                    ? "secondary"
+                                    : "outline"
+                                }
+                              >
+                                {item.platformStatuses[platform].status === "posting" && (
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                )}
+                                {item.platformStatuses[platform].status === "success" && (
+                                  <Check className="h-3 w-3 mr-1" />
+                                )}
+                                {item.platformStatuses[platform].status === "error" && (
+                                  <AlertCircle className="h-3 w-3 mr-1" />
+                                )}
+                                {item.platformStatuses[platform].message || item.platformStatuses[platform].status}
+                              </Badge>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* Category */}
                     <div className="space-y-2">
                       <Label>Category</Label>
@@ -522,9 +574,7 @@ export default function ListingBotUI() {
                           <SelectValue placeholder="Select category" />
                         </SelectTrigger>
                         <SelectContent>
-                          {CATEGORIES[item.productType === "phone" ? "phones" : 
-                            item.productType === "accessory" ? "accessories" : "gadgets"
-                          ].map((cat) => (
+                          {CATEGORIES[item.productType === "phone" ? "phones" : item.productType === "accessory" ? "accessories" : "gadgets"].map((cat) => (
                             <SelectItem key={cat} value={cat}>
                               {cat}
                             </SelectItem>
@@ -1121,61 +1171,8 @@ export default function ListingBotUI() {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="platforms" className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Select Platforms to Post</Label>
-                    <div className="space-y-2">
-                      {["hubx", "gsmexchange", "kardof", "cellpex", "handlot"].map((platform) => (
-                        <div key={platform} className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <Checkbox
-                              checked={item.selectedPlatforms.includes(platform)}
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  updateItem(item.id, {
-                                    selectedPlatforms: [...item.selectedPlatforms, platform],
-                                  })
-                                } else {
-                                  updateItem(item.id, {
-                                    selectedPlatforms: item.selectedPlatforms.filter(
-                                      (p) => p !== platform
-                                    ),
-                                  })
-                                }
-                              }}
-                            />
-                            <Label className="capitalize">{platform}</Label>
-                          </div>
-                          {item.platformStatuses[platform] && (
-                            <Badge
-                              variant={
-                                item.platformStatuses[platform].status === "success"
-                                  ? "default"
-                                  : item.platformStatuses[platform].status === "error"
-                                  ? "destructive"
-                                  : item.platformStatuses[platform].status === "posting"
-                                  ? "secondary"
-                                  : "outline"
-                              }
-                            >
-                              {item.platformStatuses[platform].status === "posting" && (
-                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                              )}
-                              {item.platformStatuses[platform].status === "success" && (
-                                <Check className="h-3 w-3 mr-1" />
-                              )}
-                              {item.platformStatuses[platform].status === "error" && (
-                                <AlertCircle className="h-3 w-3 mr-1" />
-                              )}
-                              {item.platformStatuses[platform].message || 
-                                item.platformStatuses[platform].status}
-                            </Badge>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </TabsContent>
+                {/* Remove old Platforms tab content */}
+                {/* (deleted) */}
               </Tabs>
             </Card>
           ))}
