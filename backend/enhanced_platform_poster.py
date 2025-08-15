@@ -1117,28 +1117,40 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             except Exception as e:
                 print(f"⚠️  Could not enter quantity: {e}")
             
-            # Price (try multiple common selectors) — normalize to integer (maxlength=4)
+            # Price (try multiple common selectors) — normalize to integer respecting field maxlength
             try:
-                price_value = self._normalize_price_str(row.get("price", ""))
-                if price_value:
-                    price_selectors = [
-                        (By.NAME, "txtPrice"),
-                        (By.NAME, "txtAsk"),
-                        (By.NAME, "txtAmount"),
-                        (By.CSS_SELECTOR, "input[name*='price' i]"),
-                    ]
-                    price_field = None
-                    for by, sel in price_selectors:
-                        try:
-                            price_field = driver.find_element(by, sel)
-                            break
-                        except Exception:
-                            continue
-                    if price_field:
-                        price_field.clear()
-                        price_field.send_keys(price_value)
-                        print(f"✅ Price entered (normalized): {price_value}")
-                        self._capture_step("price_entered", f"Price: {price_value}")
+                raw_price = row.get("price", "")
+                price_selectors = [
+                    (By.NAME, "txtPrice"),
+                    (By.NAME, "txtAsk"),
+                    (By.NAME, "txtAmount"),
+                    (By.CSS_SELECTOR, "input[name*='price' i]"),
+                ]
+                price_field = None
+                for by, sel in price_selectors:
+                    try:
+                        price_field = driver.find_element(by, sel)
+                        break
+                    except Exception:
+                        continue
+                if price_field:
+                    try:
+                        mx = price_field.get_attribute('maxlength')
+                        max_len = int(mx) if (mx and str(mx).isdigit()) else 6
+                    except Exception:
+                        max_len = 6
+                    # Normalize digits only and respect maxlength
+                    try:
+                        normalized_int = int(round(float(str(raw_price).replace(',', '').strip())))
+                        digits = str(normalized_int)
+                    except Exception:
+                        digits = "".join(ch for ch in str(raw_price) if ch.isdigit())
+                    if max_len > 0:
+                        digits = digits[:max_len]
+                    price_field.clear()
+                    price_field.send_keys(digits)
+                    print(f"✅ Price entered (normalized): {digits}")
+                    self._capture_step("price_entered", f"Price: {digits}")
             except Exception as e:
                 print(f"⚠️  Could not enter price: {e}")
 
@@ -1173,31 +1185,55 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             except Exception as e:
                 print(f"⚠️  Could not select currency: {e}")
 
-            # Condition (optional, try a few names) with relaxed matching
+            # Condition for all sections: support select dropdown or radio group
             try:
-                condition = str(row.get("condition", "Used"))
-                cond_select = None
-                for name in ["selCondition", "selCond", "condition"]:
-                    try:
-                        cond_select = driver.find_element(By.NAME, name)
-                        break
-                    except Exception:
-                        continue
-                if cond_select:
-                    ok = False
-                    try:
-                        Select(cond_select).select_by_visible_text(condition)
-                        ok = True
-                    except Exception:
-                        ok = self._select_relaxed(cond_select, [condition])
-                    if not ok:
+                condition = str(row.get("condition", "Used")).strip()
+                # First try radio group (gadgets/accessories use radios)
+                try:
+                    radios = driver.find_elements(By.XPATH, "//input[@type='radio' and @name='selCondition']")
+                except Exception:
+                    radios = []
+                if radios:
+                    value_map = {"new": "1", "used": "2", "refurbished": "4", "damaged": "7", "14-days": "8", "14 days": "8"}
+                    key = condition.lower()
+                    val = value_map.get(key, None)
+                    if val:
                         try:
-                            Select(cond_select).select_by_index(1)
-                            ok = True
+                            el = driver.find_element(By.CSS_SELECTOR, f"input[type='radio'][name='selCondition'][value='{val}']")
+                            if el.is_displayed():
+                                driver.execute_script("arguments[0].click();", el)
+                                print(f"✅ Condition selected (radio): {condition}")
+                                self._capture_step("condition_selected", f"Condition: {condition}")
                         except Exception:
                             pass
-                    print(f"✅ Condition selected: {condition}")
-                    self._capture_step("condition_selected", f"Condition: {condition}")
+                else:
+                    # Fallback to select dropdown
+                    cond_select = None
+                    for name in ["selCondition", "selCond", "condition"]:
+                        try:
+                            el = driver.find_element(By.NAME, name)
+                            # Ensure it's actually a <select>
+                            if el.tag_name.lower() == 'select':
+                                cond_select = el
+                                break
+                        except Exception:
+                            continue
+                    if cond_select:
+                        ok = False
+                        try:
+                            Select(cond_select).select_by_visible_text(condition)
+                            ok = True
+                        except Exception:
+                            ok = self._select_relaxed(cond_select, [condition])
+                        if not ok:
+                            try:
+                                Select(cond_select).select_by_index(1)
+                                ok = True
+                            except Exception:
+                                pass
+                        if ok:
+                            print(f"✅ Condition selected: {condition}")
+                            self._capture_step("condition_selected", f"Condition: {condition}")
             except Exception as e:
                 print(f"⚠️  Could not select condition: {e}")
 
@@ -1292,19 +1328,28 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 except Exception as e:
                     print(f"⚠️  Skipping product name due to: {e}")
             
-            # Comments/Description (areaComments) - Use JavaScript injection for reliability
+            # Description: Phones use areaComments; Gadgets/Accessories use areaDesc
             try:
-                comments_field = wait.until(EC.presence_of_element_located((By.NAME, "areaComments")))
                 description = str(row.get("description", f"High quality {row.get('brand', 'Apple')} device in {row.get('condition', 'excellent')} condition"))
-                # Use JavaScript injection to avoid interaction issues
-                driver.execute_script("arguments[0].value = arguments[1];", comments_field, description)
-                driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", comments_field)
-                print("✅ Description entered (JavaScript injection)")
-                self._capture_step("description_entered", "Entered description")
+                desc_el = None
+                for locator in [
+                    (By.NAME, "areaComments"), (By.ID, "areaComments"),
+                    (By.NAME, "areaDesc"), (By.ID, "areaDesc"),
+                    (By.CSS_SELECTOR, "textarea[name*='desc' i]"),
+                ]:
+                    try:
+                        desc_el = driver.find_element(*locator)
+                        break
+                    except Exception:
+                        continue
+                if desc_el:
+                    driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input')); arguments[0].dispatchEvent(new Event('change'));", desc_el, description)
+                    print("✅ Description entered")
+                    self._capture_step("description_entered", "Entered description")
             except Exception as e:
                 print(f"⚠️  Could not enter description: {e}")
             
-            # Remarks (areaRemarks) - Enhanced with memory info, using JavaScript injection
+            # Remarks (areaRemarks) - Enhanced with memory info, using JavaScript injection (phones only)
             try:
                 remarks_field = wait.until(EC.presence_of_element_located((By.NAME, "areaRemarks")))
                 # ✅ Include memory in remarks since it's no longer in product name
@@ -1316,6 +1361,28 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 self._capture_step("remarks_entered", "Entered remarks with memory info")
             except Exception as e:
                 print(f"⚠️  Could not enter remarks: {e}")
+
+            # Keywords (Gadgets page requires txtKeywords)
+            try:
+                kw_items = row.get("keywords") or []
+                if isinstance(kw_items, list):
+                    kw_str = ", ".join([str(k) for k in kw_items if k])
+                else:
+                    kw_str = str(kw_items)
+                if kw_str:
+                    kw_el = None
+                    for locator in [(By.ID, "txtKeywords"), (By.NAME, "txtKeywords")]:
+                        try:
+                            kw_el = driver.find_element(*locator)
+                            break
+                        except Exception:
+                            continue
+                    if kw_el:
+                        kw_el.clear(); kw_el.send_keys(kw_str)
+                        self._capture_step("keywords_entered", f"Keywords: {kw_str[:60]}")
+                        print("✅ Keywords entered")
+            except Exception:
+                pass
 
             # Optional date field (set to today) if present
             try:
@@ -1565,6 +1632,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 for locator in [
                     (By.NAME, "txtMin"),
                     (By.NAME, "txtMinOrder"),
+                    (By.NAME, "txtMinimumOrder"),
                     (By.NAME, "txtMinQty"),
                     (By.CSS_SELECTOR, "input[name*='min' i]")
                 ]:
@@ -1576,6 +1644,57 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         break
                     except Exception:
                         continue
+            except Exception:
+                pass
+
+            # Quality/Safety Certification (txtQuality)
+            try:
+                quality = str(row.get("quality_certification", "")).strip()
+                if quality:
+                    el = None
+                    for loc in [(By.ID, "txtQuality"), (By.NAME, "txtQuality")]:
+                        try:
+                            el = driver.find_element(*loc)
+                            break
+                        except Exception:
+                            continue
+                    if el:
+                        el.clear(); el.send_keys(quality)
+                        print("✅ Quality/Certification entered")
+            except Exception:
+                pass
+
+            # Delivery time (txtDelivery)
+            try:
+                delivery = str(row.get("delivery_days", "")).strip()
+                if delivery:
+                    el = None
+                    for loc in [(By.ID, "txtDelivery"), (By.NAME, "txtDelivery")]:
+                        try:
+                            el = driver.find_element(*loc)
+                            break
+                        except Exception:
+                            continue
+                    if el:
+                        el.clear(); el.send_keys(delivery)
+                        print(f"✅ Delivery time entered: {delivery} days")
+            except Exception:
+                pass
+
+            # Supply ability (txtSupplyAbility)
+            try:
+                supply = str(row.get("supply_ability", "")).strip()
+                if supply:
+                    el = None
+                    for loc in [(By.ID, "txtSupplyAbility"), (By.NAME, "txtSupplyAbility")]:
+                        try:
+                            el = driver.find_element(*loc)
+                            break
+                        except Exception:
+                            continue
+                    if el:
+                        el.clear(); el.send_keys(supply)
+                        print(f"✅ Supply ability entered: {supply}")
             except Exception:
                 pass
 

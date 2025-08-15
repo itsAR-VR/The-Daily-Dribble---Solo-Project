@@ -329,6 +329,8 @@ export default function ListingBotUI() {
               listing_data: {
                 // Send all the comprehensive data
                 product_type: item.productType,
+                // Hint backend about Cellpex section mapping
+                section: item.productType === "accessory" ? "2" : (item.productType === "gadget" ? "G" : "1"),
                 category: item.category,
                 brand: item.brand,
                 product_name: item.productName,
