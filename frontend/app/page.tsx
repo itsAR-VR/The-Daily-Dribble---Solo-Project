@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { useDropzone } from "react-dropzone"
 
 const API_BASE_URL = "https://listing-bot-api-production.up.railway.app"
 
@@ -119,6 +120,20 @@ type ComprehensiveListingItem = {
   // Additional
   privateNotes: string
   manufacturerType: "OEM" | "ODM" | "not_specified"
+}
+
+function DragDropCsv({ onFile, children }: { onFile: (f: File) => void, children: React.ReactNode }) {
+  const onDrop = (accepted: File[]) => {
+    const file = accepted?.[0]
+    if (file) onFile(file)
+  }
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'text/csv': ['.csv'] } })
+  return (
+    <div {...getRootProps()} className={`mr-4 rounded-md border px-4 py-3 cursor-pointer ${isDragActive ? 'bg-accent/40' : 'bg-background'}`}>
+      <input {...getInputProps()} />
+      {children}
+    </div>
+  )
 }
 
 export default function ListingBotUI() {
@@ -443,12 +458,16 @@ export default function ListingBotUI() {
   const [csvPreview, setCsvPreview] = useState<{ headers: string[], rows: string[][] }>({ headers: [], rows: [] })
   const [csvErrors, setCsvErrors] = useState<string[]>([])
 
+  const parseCsvText = (text: string) => {
+    const lines = text.split(/\r?\n/).filter(Boolean)
+    const headers = lines.length ? lines[0].split(',').map(h => h.trim()) : []
+    const rows = lines.slice(1).map(l => l.split(','))
+    return { headers, rows }
+  }
+
   const handleCsvFile = async (file: File) => {
     const text = await file.text()
-    const lines = text.split(/\r?\n/).filter(Boolean)
-    if (lines.length < 1) return
-    const headers = lines[0].split(',').map(h => h.trim())
-    const rows = lines.slice(1).map(l => l.split(','))
+    const { headers, rows } = parseCsvText(text)
     const missing = requiredHeaders.filter(h => !headers.includes(h))
     setCsvErrors(missing.length ? [`Missing required headers: ${missing.join(', ')}`] : [])
     setCsvPreview({ headers, rows })
@@ -457,6 +476,62 @@ export default function ListingBotUI() {
   const createItemsFromPreview = () => {
     const { headers, rows } = csvPreview
     if (!headers.length || !rows.length) return
+    const missing = requiredHeaders.filter(h => !headers.includes(h))
+    if (missing.length) {
+      alert(`Missing required headers: ${missing.join(', ')}`)
+      return
+    }
+    const idx = (h: string) => headers.indexOf(h)
+    const newItems: ComprehensiveListingItem[] = rows.map((cols) => ({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      productType: (cols[idx('productType')] as any) || 'phone',
+      category: cols[idx('category')] || '',
+      brand: cols[idx('brand')] || '',
+      productName: cols[idx('productName')] || '',
+      modelCode: cols[idx('modelCode')] || '',
+      condition: cols[idx('condition')] || 'New',
+      customCondition: '',
+      conditionGrade: 'A',
+      lcdDefects: 'None',
+      qualityCertification: '',
+      memory: cols[idx('memory')] || '128GB',
+      color: cols[idx('color')] || 'Black',
+      marketSpec: cols[idx('marketSpec')] || 'US',
+      simLockStatus: cols[idx('simLockStatus')] || 'Unlocked',
+      carrier: cols[idx('carrier')] || '',
+      price: parseFloat(cols[idx('price')] || '0') || 0,
+      currency: cols[idx('currency')] || 'USD',
+      quantity: parseInt(cols[idx('quantity')] || '1') || 1,
+      minimumOrderQuantity: parseInt(cols[idx('minimumOrderQuantity')] || '1') || 1,
+      supplyAbility: cols[idx('supplyAbility')] || '',
+      packaging: cols[idx('packaging')] || 'Original Box',
+      itemWeight: parseFloat(cols[idx('itemWeight')] || '0.3') || 0.3,
+      weightUnit: cols[idx('weightUnit')] || 'kg',
+      incoterm: cols[idx('incoterm')] || 'EXW',
+      allowLocalPickup: (cols[idx('allowLocalPickup')] || 'false').toLowerCase()==='true',
+      deliveryDays: parseInt(cols[idx('deliveryDays')] || '7') || 7,
+      country: cols[idx('country')] || 'United States',
+      state: cols[idx('state')] || '',
+      description: cols[idx('description')] || '',
+      keywords: (cols[idx('keywords')] || '').split(/;|,/).filter(Boolean),
+      photos: [],
+      photoUrls: [],
+      acceptedPayments: ['PayPal'],
+      autoShareLinkedIn: false,
+      autoShareTwitter: false,
+      selectedPlatforms: [],
+      platformStatuses: {},
+      privateNotes: '',
+      manufacturerType: 'not_specified',
+    }))
+    setItems([...items, ...newItems])
+    alert(`${newItems.length} item(s) added from CSV`)
+  }
+
+  // Quick import by dropping onto the bulk upload area
+  const quickImportCsv = async (file: File) => {
+    const text = await file.text()
+    const { headers, rows } = parseCsvText(text)
     const missing = requiredHeaders.filter(h => !headers.includes(h))
     if (missing.length) {
       alert(`Missing required headers: ${missing.join(', ')}`)
@@ -606,15 +681,18 @@ export default function ListingBotUI() {
         <CardContent className="space-y-6">
           {/* Bulk Upload Modal Launcher */}
           <div className="flex justify-between items-center p-4 border rounded-md">
-            <div>
-              <h4 className="font-semibold">Bulk upload</h4>
-              <p className="text-sm text-muted-foreground">Import items from Excel/Google Sheets (CSV)</p>
-            </div>
+            <DragDropCsv onFile={(f)=>quickImportCsv(f)}>
+              <div className="flex-1">
+                <h4 className="font-semibold">Bulk upload</h4>
+                <p className="text-sm text-muted-foreground">Drag & drop CSV here or use the button</p>
+              </div>
+            </DragDropCsv>
             <Dialog>
               <DialogTrigger asChild>
                 <Button size="sm">Bulk Upload</Button>
               </DialogTrigger>
-              <DialogContent className="max-w-3xl">
+              <DialogContent className="max-w-[900px] p-0">
+                <div className="max-h-[80vh] overflow-y-auto p-6">
                 <DialogHeader>
                   <DialogTitle>Bulk upload from sheet</DialogTitle>
                   <DialogDescription>Use the template and keep the header order. Preview appears below before importing.</DialogDescription>
@@ -622,8 +700,8 @@ export default function ListingBotUI() {
                 <div className="space-y-4">
                   <div className="text-sm">
                     <p className="mb-2 font-medium">Required headers (in order):</p>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs border">
+                    <div className="overflow-x-auto max-h-56 overflow-y-auto rounded border">
+                      <table className="w-full text-xs">
                         <thead>
                           <tr className="bg-muted">
                             <th className="p-2 text-left">#</th>
@@ -701,7 +779,8 @@ export default function ListingBotUI() {
                     </div>
                   )}
                 </div>
-                <DialogFooter>
+                </div>
+                <DialogFooter className="p-4 border-t">
                   <span className="text-xs text-muted-foreground">Tip: Export your Google Sheet as CSV (File → Download → Comma-separated values)</span>
                 </DialogFooter>
               </DialogContent>
