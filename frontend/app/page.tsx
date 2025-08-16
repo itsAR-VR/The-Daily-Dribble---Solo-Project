@@ -789,8 +789,37 @@ export default function ListingBotUI() {
 
           {items.map((item, index) => (
             <Card key={item.id} className="p-6 space-y-6">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center gap-3 flex-wrap">
                 <h3 className="text-lg font-semibold">Item {index + 1}</h3>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Label className="text-sm text-muted-foreground">Post to Platforms</Label>
+                  <Badge variant="secondary">{item.selectedPlatforms.length} selected</Badge>
+                  {[
+                    "hubx",
+                    "gsmexchange",
+                    "kardof",
+                    "cellpex",
+                    "handlot",
+                  ].map((platform) => (
+                    <div key={platform} className="flex items-center space-x-2">
+                      <Checkbox
+                        checked={item.selectedPlatforms.includes(platform)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            updateItem(item.id, {
+                              selectedPlatforms: [...item.selectedPlatforms, platform],
+                            })
+                          } else {
+                            updateItem(item.id, {
+                              selectedPlatforms: item.selectedPlatforms.filter((p) => p !== platform),
+                            })
+                          }
+                        }}
+                      />
+                      <Label className="capitalize text-sm">{platform}</Label>
+                    </div>
+                  ))}
+                </div>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -812,12 +841,11 @@ export default function ListingBotUI() {
               </div>
 
               <Tabs defaultValue="basic" className="w-full">
-                <TabsList className="grid w-full grid-cols-5">
+                <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value="basic">Basic Info</TabsTrigger>
                   <TabsTrigger value="specs">Specs & Condition</TabsTrigger>
                   <TabsTrigger value="pricing">Pricing & Shipping</TabsTrigger>
                   <TabsTrigger value="media">Media & Description</TabsTrigger>
-                  <TabsTrigger value="platforms">Platforms</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="basic" className="space-y-4">
@@ -843,57 +871,7 @@ export default function ListingBotUI() {
                       </ToggleGroup>
                     </div>
 
-                    {/* Platforms (inline per item) */}
-                    <div className="space-y-2">
-                      <Label>Post to Platforms</Label>
-                      <div className="space-y-1">
-                        {["hubx", "gsmexchange", "kardof", "cellpex", "handlot"].map((platform) => (
-                          <div key={platform} className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <Checkbox
-                                checked={item.selectedPlatforms.includes(platform)}
-                                onCheckedChange={(checked) => {
-                                  if (checked) {
-                                    updateItem(item.id, {
-                                      selectedPlatforms: [...item.selectedPlatforms, platform],
-                                    })
-                                  } else {
-                                    updateItem(item.id, {
-                                      selectedPlatforms: item.selectedPlatforms.filter((p) => p !== platform),
-                                    })
-                                  }
-                                }}
-                              />
-                              <Label className="capitalize">{platform}</Label>
-                            </div>
-                            {item.platformStatuses[platform] && (
-                              <Badge
-                                variant={
-                                  item.platformStatuses[platform].status === "success"
-                                    ? "default"
-                                    : item.platformStatuses[platform].status === "error"
-                                    ? "destructive"
-                                    : item.platformStatuses[platform].status === "posting"
-                                    ? "secondary"
-                                    : "outline"
-                                }
-                              >
-                                {item.platformStatuses[platform].status === "posting" && (
-                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                )}
-                                {item.platformStatuses[platform].status === "success" && (
-                                  <Check className="h-3 w-3 mr-1" />
-                                )}
-                                {item.platformStatuses[platform].status === "error" && (
-                                  <AlertCircle className="h-3 w-3 mr-1" />
-                                )}
-                                {item.platformStatuses[platform].message || item.platformStatuses[platform].status}
-                              </Badge>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    {/* Removed inline platforms here; moved to header */}
 
                     {/* Category */}
                     <div className="space-y-2">
