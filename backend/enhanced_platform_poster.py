@@ -403,7 +403,10 @@ class Enhanced2FAMarketplacePoster:
         # Platform-specific success indicators
         success_indicators = {
             'hubx': ['dashboard', 'inventory', 'sell'],
-            'gsmexchange': ['my account', 'post listing', 'dashboard'],
+            'gsmexchange': [
+                'my account', 'post listing', 'dashboard',
+                'phones', 'add offer', 'new offer', 'post offers'
+            ],
             'cellpex': ['dashboard', 'listings', 'profile'],
             'kardof': ['panel', 'listings', 'account'],
             'handlot': ['dashboard', 'inventory', 'account']
@@ -626,7 +629,20 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             product_name = str(row.get("product_name") or row.get("model") or row.get("model_code") or "").strip()
             if product_name:
                 try:
-                    model_input = wait.until(EC.presence_of_element_located((By.NAME, "phModelFull")))
+                    # Support both new and legacy typeahead inputs
+                    model_input = None
+                    for by, sel in [
+                        (By.NAME, "phModelFull"),
+                        (By.CSS_SELECTOR, "input[data-component='trading/phoneAutocompleter']"),
+                        (By.CSS_SELECTOR, ".twitter-typeahead input.tt-query"),
+                    ]:
+                        try:
+                            model_input = wait.until(EC.presence_of_element_located((by, sel)))
+                            break
+                        except Exception:
+                            continue
+                    if not model_input:
+                        raise TimeoutException("model input not found")
                     picked = _try_pick_typeahead(model_input, product_name)
                     self._capture_step("gsmx_model", f"Model set: {product_name}{' (picked)' if picked else ''}")
                 except Exception:
@@ -806,7 +822,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             submitted = False
             for loc in [
                 (By.CSS_SELECTOR, "button.primary.c-tOR-item[type='submit']"),
-                (By.XPATH, "//button[@type='submit' and contains(.,'New offer')]")
+                (By.XPATH, "//button[@type='submit' and contains(.,'New offer') or contains(.,'Post') or contains(.,'Create') or contains(.,'Submit')]")
             ]:
                 try:
                     btn = driver.find_element(*loc)
@@ -818,6 +834,22 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                     break
                 except Exception:
                     continue
+            # Additional submit fallbacks (legacy forms)
+            if not submitted:
+                for by, sel in [
+                    (By.CSS_SELECTOR, "input[type='submit'][value*='New offer' i]"),
+                    (By.CSS_SELECTOR, "input[type='submit'][value*='Post' i]"),
+                    (By.CSS_SELECTOR, "button[type='submit']"),
+                    (By.CSS_SELECTOR, "input[type='submit']"),
+                ]:
+                    try:
+                        btn = driver.find_element(by, sel)
+                        driver.execute_script("arguments[0].click();", btn)
+                        submitted = True
+                        self._capture_step("gsmx_submit_fallback", f"Clicked submit via {sel}")
+                        break
+                    except Exception:
+                        continue
 
             if not submitted:
                 self._capture_step("gsmx_no_submit", "Submit button not found")
@@ -826,7 +858,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             # Wait for a success cue
             time.sleep(4)
             page = driver.page_source.lower()
-            if any(k in page for k in ["success", "created", "new offer", "posted"]):
+            if any(k in page for k in ["success", "created", "new offer", "posted", "offer has been", "thank you", "your offer"]):
                 return "Success: GSM Exchange offer posted"
             return "Pending: Submitted offer; waiting for confirmation"
             
