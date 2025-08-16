@@ -420,11 +420,152 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
     PLATFORM = "GSMEXCHANGE"
     LOGIN_URL = "https://www.gsmexchange.com/signin"
     
+    def login_with_2fa(self) -> bool:
+        """GSM Exchange specific login with optional email 2FA."""
+        driver = self.driver
+        wait = WebDriverWait(driver, 20)
+        try:
+            driver.get(self.LOGIN_URL)
+            self._capture_step("gsmx_login_page", f"Opened login page: {self.LOGIN_URL}")
+
+            # Fill credentials (support multiple selector variants)
+            user_field = None
+            for by, sel in [
+                (By.NAME, "email"), (By.ID, "email"), (By.CSS_SELECTOR, "input[type='email']"),
+                (By.NAME, "username"), (By.ID, "username"),
+            ]:
+                try:
+                    user_field = wait.until(EC.presence_of_element_located((by, sel)))
+                    break
+                except Exception:
+                    continue
+            if not user_field:
+                raise TimeoutException("username/email input not found")
+            user_field.clear(); user_field.send_keys(self.username)
+
+            pass_field = None
+            for by, sel in [
+                (By.NAME, "password"), (By.ID, "password"), (By.CSS_SELECTOR, "input[type='password']")
+            ]:
+                try:
+                    pass_field = wait.until(EC.presence_of_element_located((by, sel)))
+                    break
+                except Exception:
+                    continue
+            if not pass_field:
+                raise TimeoutException("password input not found")
+            pass_field.clear(); pass_field.send_keys(self.password)
+            self._capture_step("gsmx_login_filled", "Filled GSMX credentials")
+
+            # Submit
+            submitted = False
+            for by, sel in [
+                (By.CSS_SELECTOR, "button[type='submit']"),
+                (By.CSS_SELECTOR, "input[type='submit']"),
+                (By.XPATH, "//button[contains(.,'Sign in') or contains(.,'Login') or contains(.,'Log in')]")
+            ]:
+                try:
+                    btn = driver.find_element(by, sel)
+                    driver.execute_script("arguments[0].click();", btn)
+                    submitted = True
+                    break
+                except Exception:
+                    continue
+            if not submitted:
+                pass_field.send_keys("\n")
+            self._capture_step("gsmx_login_submitted", "Submitted GSMX login")
+
+            time.sleep(2)
+            # 2FA detection – look for code prompt or OTP field
+            page_l = driver.page_source.lower()
+            two_fa = any(k in page_l for k in ["verification", "2fa", "enter code", "security code", "authentication code"]) or \
+                bool(driver.find_elements(By.XPATH, "//input[@name='code' or @name='otp' or @name='token']"))
+            if two_fa:
+                self._capture_step("gsmx_2fa_page", "GSMX 2FA verification page detected")
+                ok = self._handle_gsmx_2fa()
+                if not ok:
+                    return False
+            # Success check
+            return self._check_login_success()
+        except TimeoutException:
+            self._capture_step("gsmx_login_timeout", "Login timeout")
+            return False
+        except Exception as e:
+            self._capture_step("gsmx_login_error", f"{e}")
+            return False
+
+    def _handle_gsmx_2fa(self) -> bool:
+        """Enter the GSM Exchange verification code from Gmail."""
+        if not self.gmail_service:
+            print("❌ Gmail service not available for 2FA")
+            return False
+        driver = self.driver
+        wait = WebDriverWait(driver, 20)
+        try:
+            print("📧 Waiting for GSMX 2FA email…")
+            time.sleep(10)
+            # Search recent emails from gsmexchange
+            code = None
+            try:
+                results = self.gmail_service.service.users().messages().list(
+                    userId='me', q='from:gsmexchange.com newer_than:1d', maxResults=5
+                ).execute()
+                messages = results.get('messages', [])
+                if messages:
+                    msg_id = messages[0]['id']
+                    msg = self.gmail_service.service.users().messages().get(userId='me', id=msg_id).execute()
+                    snippet = msg.get('snippet', '')
+                    import re
+                    codes = re.findall(r"\b(\d{6})\b", snippet)
+                    if codes:
+                        code = codes[0]
+            except Exception:
+                pass
+            if not code:
+                # fallback to generic extractor
+                recent = self._search_recent_emails("gsmexchange", minutes_back=10)
+                if recent:
+                    code = self._llm_extract_auth_code(recent[0].get('content',''), recent[0].get('subject',''))
+            if not code:
+                print("❌ No GSMX 2FA code found")
+                return False
+            # Enter code
+            field = None
+            for by, sel in [
+                (By.NAME, 'code'), (By.ID, 'code'), (By.NAME, 'otp'), (By.NAME, 'token'),
+                (By.CSS_SELECTOR, "input[type='text'][maxlength='6']")
+            ]:
+                try:
+                    field = wait.until(EC.presence_of_element_located((by, sel)))
+                    break
+                except Exception:
+                    continue
+            if not field:
+                print("❌ GSMX 2FA input not found")
+                return False
+            field.clear(); field.send_keys(code)
+            # Submit
+            for by, sel in [
+                (By.CSS_SELECTOR, "button[type='submit']"),
+                (By.XPATH, "//button[contains(.,'Verify') or contains(.,'Submit') or contains(.,'Continue')]")
+            ]:
+                try:
+                    btn = driver.find_element(by, sel)
+                    driver.execute_script("arguments[0].click();", btn)
+                    break
+                except Exception:
+                    continue
+            time.sleep(2)
+            return self._check_login_success()
+        except Exception as e:
+            print(f"❌ Error entering GSMX 2FA code: {e}")
+            return False
+
     def post_listing(self, row):
         """Post listing on GSM Exchange (Phones > Add offer → I want to sell)."""
         driver = self.driver
         wait = WebDriverWait(driver, 20)
-
+        
         def _try_pick_typeahead(input_el, text: str) -> bool:
             try:
                 input_el.clear()
@@ -688,7 +829,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             if any(k in page for k in ["success", "created", "new offer", "posted"]):
                 return "Success: GSM Exchange offer posted"
             return "Pending: Submitted offer; waiting for confirmation"
-
+            
         except TimeoutException:
             return "Timeout posting listing"
         except Exception as e:
@@ -862,7 +1003,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 pass
         except Exception:
             pass
-        return False
+            return False
     
     def login_with_2fa(self) -> bool:
         """Enhanced login with 2FA support - Cellpex specific implementation"""
@@ -1081,7 +1222,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
         except Exception:
             pass
         return ""
-
+    
     def _dismiss_popups(self, driver):
         """Dismiss any popups that might interfere with form interaction"""
         popup_selectors = [
@@ -1258,7 +1399,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 self._capture_step("brand_selected", f"Brand selected: {brand}")
             except Exception as e:
                 print(f"⚠️  Could not select brand: {e}")
-
+            
             # Accessories/Gadgets specific fields: txtCode, txtBrand (optional), txtModel
             if section_mode in ('accessories', 'gadgets'):
                 # Name or code
@@ -1333,7 +1474,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     print("⚠️  Quantity field not found (txtAvailable/txtQty)")
             except Exception as e:
                 print(f"⚠️  Could not enter quantity: {e}")
-            
+
             # Price (try multiple common selectors) — normalize to integer respecting field maxlength
             try:
                 raw_price = row.get("price", "")
@@ -1356,7 +1497,6 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         max_len = int(mx) if (mx and str(mx).isdigit()) else 6
                     except Exception:
                         max_len = 6
-                    # Normalize digits only and respect maxlength
                     try:
                         normalized_int = int(round(float(str(raw_price).replace(',', '').strip())))
                         digits = str(normalized_int)
@@ -1387,7 +1527,6 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         Select(currency_select).select_by_visible_text(currency)
                         ok = True
                     except Exception:
-                        # Relaxed fallback with common synonyms
                         candidates = [currency]
                         if currency == "USD":
                             candidates += ["US Dollar", "USD $", "$", "Dollar"]
@@ -1405,7 +1544,6 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             # Condition for all sections: support select dropdown or radio group
             try:
                 condition = str(row.get("condition", "Used")).strip()
-                # First try radio group (gadgets/accessories use radios)
                 try:
                     radios = driver.find_elements(By.XPATH, "//input[@type='radio' and @name='selCondition']")
                 except Exception:
@@ -1424,12 +1562,10 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         except Exception:
                             pass
                 else:
-                    # Fallback to select dropdown
                     cond_select = None
                     for name in ["selCondition", "selCond", "condition"]:
                         try:
                             el = driver.find_element(By.NAME, name)
-                            # Ensure it's actually a <select>
                             if el.tag_name.lower() == 'select':
                                 cond_select = el
                                 break
@@ -1460,12 +1596,10 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     human_product = str(row.get('product_name') or '').strip()
                     brand_val = str(row.get('brand', '')).strip()
                     fallback_model = f"{brand_val or 'Apple'} {row.get('model', 'iPhone 14 Pro')}".strip()
-                    # Ensure the brand is included in the search text so autocomplete recognizes it
                     if human_product and brand_val and brand_val.lower() not in human_product.lower():
                         product_name = f"{brand_val} {human_product}".strip()
                     else:
                         product_name = human_product or fallback_model
-                    # Prefer interactive typing to trigger autocomplete
                     model_field = None
                     for locator in [
                         (By.NAME, "txtBrandModel"),
@@ -1480,14 +1614,11 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     if model_field:
                         model_field.clear()
                         model_field.click()
-                        # Type slowly to trigger suggestions
                         for chunk in product_name.split(" "):
                             model_field.send_keys(chunk + " ")
                             time.sleep(0.3)
                         time.sleep(1.5)
-                        # Try to pick a suggestion item (robust)
                         picked = self._try_pick_autocomplete(model_field, wait, product_name)
-                        # If we typed but didn't pick a suggestion, verify any hidden IDs were set; if not, force-pick first
                         if not picked:
                             try:
                                 hidden_ok = False
@@ -1497,11 +1628,9 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                                         val = (hf.get_attribute('value') or '').strip()
                                         if name and val and any(tok in name for tok in ['modelid','brandid','itemid','hdnmodel','hdnbrand']):
                                             hidden_ok = True
-                                            break
                                     except Exception:
                                         continue
                                 if not hidden_ok:
-                                    # Try keyboard selection to ensure a suggestion is chosen
                                     model_field.send_keys("\ue015")
                                     time.sleep(0.1)
                                     model_field.send_keys("\ue007")
@@ -1509,11 +1638,9 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                             except Exception:
                                 pass
                         if not picked:
-                            # Fallback to JS set + change/blur events
                             driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input')); arguments[0].dispatchEvent(new Event('change')); arguments[0].blur();", model_field, product_name)
                         print(f"✅ Product name set: {product_name} {'(picked suggestion)' if picked else '(direct)'}")
                         self._capture_step("product_name_set", f"Product name: {product_name}")
-                        # Inspect potential hidden fields that autocomplete may set
                         try:
                             hidden_fields = driver.find_elements(By.CSS_SELECTOR, "input[type='hidden']")
                             hidden_summary = []
@@ -1530,9 +1657,8 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         except Exception:
                             pass
                     else:
-                        # Last resort JS injection
                         driver.execute_script("""
-                            var field = document.querySelector('[name="txtBrandModel"]');
+                            var field = document.querySelector('[name=\"txtBrandModel\"]');
                             if (field) {
                                 field.value = arguments[0];
                                 field.dispatchEvent(new Event('input'));
@@ -1544,7 +1670,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         self._capture_step("product_name_set", f"Product name: {product_name}")
                 except Exception as e:
                     print(f"⚠️  Skipping product name due to: {e}")
-            
+
             # Description: Phones use areaComments; Gadgets/Accessories use areaDesc
             try:
                 description = str(row.get("description", f"High quality {row.get('brand', 'Apple')} device in {row.get('condition', 'excellent')} condition"))
@@ -1565,13 +1691,11 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     self._capture_step("description_entered", "Entered description")
             except Exception as e:
                 print(f"⚠️  Could not enter description: {e}")
-            
+
             # Remarks (areaRemarks) - Enhanced with memory info, using JavaScript injection (phones only)
             try:
                 remarks_field = wait.until(EC.presence_of_element_located((By.NAME, "areaRemarks")))
-                # ✅ Include memory in remarks since it's no longer in product name
                 remarks = f"Memory: {row.get('memory', '128GB')} | Condition: {row.get('condition', 'Excellent')} | Color: {row.get('color', 'Space Black')}"
-                # Use JavaScript injection to avoid interaction issues
                 driver.execute_script("arguments[0].value = arguments[1];", remarks_field, remarks)
                 driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", remarks_field)
                 print("✅ Remarks entered (JavaScript injection with memory info)")
@@ -1728,7 +1852,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                             ok = self._select_relaxed(market_select, cands)
                         if ok:
                             print(f"✅ Market Spec selected: {desired_market_norm}")
-                            break
+                        break
                     except Exception:
                         continue
             except Exception:
