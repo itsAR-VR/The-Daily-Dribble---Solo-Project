@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 
 const API_BASE_URL = "https://listing-bot-api-production.up.railway.app"
 
@@ -437,6 +438,77 @@ export default function ListingBotUI() {
     URL.revokeObjectURL(url)
   }
 
+  // CSV upload state and helpers
+  const requiredHeaders = ['productType','category','brand','productName','modelCode','condition','price','currency','quantity','country']
+  const [csvPreview, setCsvPreview] = useState<{ headers: string[], rows: string[][] }>({ headers: [], rows: [] })
+  const [csvErrors, setCsvErrors] = useState<string[]>([])
+
+  const handleCsvFile = async (file: File) => {
+    const text = await file.text()
+    const lines = text.split(/\r?\n/).filter(Boolean)
+    if (lines.length < 1) return
+    const headers = lines[0].split(',').map(h => h.trim())
+    const rows = lines.slice(1).map(l => l.split(','))
+    const missing = requiredHeaders.filter(h => !headers.includes(h))
+    setCsvErrors(missing.length ? [`Missing required headers: ${missing.join(', ')}`] : [])
+    setCsvPreview({ headers, rows })
+  }
+
+  const createItemsFromPreview = () => {
+    const { headers, rows } = csvPreview
+    if (!headers.length || !rows.length) return
+    const missing = requiredHeaders.filter(h => !headers.includes(h))
+    if (missing.length) {
+      alert(`Missing required headers: ${missing.join(', ')}`)
+      return
+    }
+    const idx = (h: string) => headers.indexOf(h)
+    const newItems: ComprehensiveListingItem[] = rows.map((cols) => ({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      productType: (cols[idx('productType')] as any) || 'phone',
+      category: cols[idx('category')] || '',
+      brand: cols[idx('brand')] || '',
+      productName: cols[idx('productName')] || '',
+      modelCode: cols[idx('modelCode')] || '',
+      condition: cols[idx('condition')] || 'New',
+      customCondition: '',
+      conditionGrade: 'A',
+      lcdDefects: 'None',
+      qualityCertification: '',
+      memory: cols[idx('memory')] || '128GB',
+      color: cols[idx('color')] || 'Black',
+      marketSpec: cols[idx('marketSpec')] || 'US',
+      simLockStatus: cols[idx('simLockStatus')] || 'Unlocked',
+      carrier: cols[idx('carrier')] || '',
+      price: parseFloat(cols[idx('price')] || '0') || 0,
+      currency: cols[idx('currency')] || 'USD',
+      quantity: parseInt(cols[idx('quantity')] || '1') || 1,
+      minimumOrderQuantity: parseInt(cols[idx('minimumOrderQuantity')] || '1') || 1,
+      supplyAbility: cols[idx('supplyAbility')] || '',
+      packaging: cols[idx('packaging')] || 'Original Box',
+      itemWeight: parseFloat(cols[idx('itemWeight')] || '0.3') || 0.3,
+      weightUnit: cols[idx('weightUnit')] || 'kg',
+      incoterm: cols[idx('incoterm')] || 'EXW',
+      allowLocalPickup: (cols[idx('allowLocalPickup')] || 'false').toLowerCase()==='true',
+      deliveryDays: parseInt(cols[idx('deliveryDays')] || '7') || 7,
+      country: cols[idx('country')] || 'United States',
+      state: cols[idx('state')] || '',
+      description: cols[idx('description')] || '',
+      keywords: (cols[idx('keywords')] || '').split(/;|,/).filter(Boolean),
+      photos: [],
+      photoUrls: [],
+      acceptedPayments: ['PayPal'],
+      autoShareLinkedIn: false,
+      autoShareTwitter: false,
+      selectedPlatforms: [],
+      platformStatuses: {},
+      privateNotes: '',
+      manufacturerType: 'not_specified',
+    }))
+    setItems([...items, ...newItems])
+    alert(`${newItems.length} item(s) added from CSV`)
+  }
+
   const handleSheetUpload = async (file: File) => {
     const text = await file.text()
     const lines = text.split(/\r?\n/).filter(Boolean)
@@ -532,15 +604,108 @@ export default function ListingBotUI() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Upload from Sheet */}
-          <div className="p-4 border rounded-md">
-            <h4 className="font-semibold mb-2">Bulk upload from sheet</h4>
-            <p className="text-sm mb-3">Upload a CSV exported from Excel/Google Sheets with the following headers in order:</p>
-            <pre className="text-xs bg-muted p-2 rounded mb-3 overflow-x-auto">productType,category,brand,productName,modelCode,condition,memory,color,marketSpec,simLockStatus,carrier,price,currency,quantity,minimumOrderQuantity,supplyAbility,packaging,itemWeight,weightUnit,incoterm,allowLocalPickup,deliveryDays,country,state,description,keywords</pre>
-            <div className="flex gap-3 items-center">
-              <input type="file" accept=".csv" onChange={(e)=>{ const f=e.target.files?.[0]; if (f) handleSheetUpload(f) }} />
-              <Button variant="outline" onClick={downloadExampleSheet}>Download example CSV</Button>
+          {/* Bulk Upload Modal Launcher */}
+          <div className="flex justify-between items-center p-4 border rounded-md">
+            <div>
+              <h4 className="font-semibold">Bulk upload</h4>
+              <p className="text-sm text-muted-foreground">Import items from Excel/Google Sheets (CSV)</p>
             </div>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button size="sm">Bulk Upload</Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-3xl">
+                <DialogHeader>
+                  <DialogTitle>Bulk upload from sheet</DialogTitle>
+                  <DialogDescription>Use the template and keep the header order. Preview appears below before importing.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="text-sm">
+                    <p className="mb-2 font-medium">Required headers (in order):</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs border">
+                        <thead>
+                          <tr className="bg-muted">
+                            <th className="p-2 text-left">#</th>
+                            <th className="p-2 text-left">Header</th>
+                            <th className="p-2 text-left">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            ['productType','phone | accessory | gadget'],
+                            ['category','e.g. Smartphones'],
+                            ['brand','e.g. Apple'],
+                            ['productName','e.g. iPhone 14 Pro'],
+                            ['modelCode','e.g. A2890'],
+                            ['condition','New | Used | Refurbished | Damaged | 14-Days'],
+                            ['memory','Optional, e.g. 256GB'],
+                            ['color','Optional, e.g. Black'],
+                            ['marketSpec','US | Euro | UK | Asia | Arabic | Other'],
+                            ['simLockStatus','Unlocked | Locked'],
+                            ['carrier','Optional'],
+                            ['price','Number'],
+                            ['currency','USD | EUR | GBP'],
+                            ['quantity','Number'],
+                            ['minimumOrderQuantity','Number'],
+                            ['supplyAbility','Optional'],
+                            ['packaging','Original Box | Bulk Packed ...'],
+                            ['itemWeight','Number, e.g. 0.3'],
+                            ['weightUnit','kg | lbs'],
+                            ['incoterm','EXW | FOB | ...'],
+                            ['allowLocalPickup','true | false'],
+                            ['deliveryDays','Number'],
+                            ['country','e.g. United States'],
+                            ['state','Optional'],
+                            ['description','Optional'],
+                            ['keywords','Optional; semicolon or comma separated']
+                          ].map((row, i) => (
+                            <tr key={i} className={i % 2 ? 'bg-background' : ''}>
+                              <td className="p-2 align-top border-t">{i + 1}</td>
+                              <td className="p-2 align-top border-t font-mono">{row[0]}</td>
+                              <td className="p-2 align-top border-t text-muted-foreground">{row[1]}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 items-center">
+                    <input type="file" accept=".csv" onChange={(e)=>{ const f=e.target.files?.[0]; if (f) handleCsvFile(f) }} />
+                    <Button variant="outline" onClick={downloadExampleSheet}>Download example CSV</Button>
+                    <Button onClick={createItemsFromPreview} disabled={!csvPreview.rows.length || !!csvErrors.length}>Import rows</Button>
+                  </div>
+                  {!!csvErrors.length && (
+                    <div className="text-sm text-destructive">{csvErrors[0]}</div>
+                  )}
+                  {csvPreview.rows.length > 0 && (
+                    <div className="max-h-64 overflow-auto border rounded">
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-muted">
+                          <tr>
+                            {csvPreview.headers.map((h, i) => (
+                              <th key={i} className="p-2 text-left border-b font-mono">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {csvPreview.rows.slice(0, 200).map((r, i) => (
+                            <tr key={i} className={i % 2 ? 'bg-background' : ''}>
+                              {r.map((c, j) => (
+                                <td key={j} className="p-2 border-b whitespace-nowrap">{c}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <span className="text-xs text-muted-foreground">Tip: Export your Google Sheet as CSV (File → Download → Comma-separated values)</span>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
 
           {items.map((item, index) => (
