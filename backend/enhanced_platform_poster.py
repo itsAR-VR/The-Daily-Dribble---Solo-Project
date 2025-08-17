@@ -564,6 +564,169 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             print(f"❌ Error entering GSMX 2FA code: {e}")
             return False
 
+    def _dismiss_gsmx_popups(self) -> None:
+        """Dismiss common GSM Exchange popups/cookie banners that may block inputs."""
+        driver = self.driver
+        try:
+            # Quick CSS-based accepts/close
+            for by, sel in [
+                (By.CSS_SELECTOR, "#onetrust-accept-btn-handler"),
+                (By.CSS_SELECTOR, "button.cookie-accept"),
+                (By.CSS_SELECTOR, "[class*='cookie'] button"),
+                (By.CSS_SELECTOR, "button[aria-label='close']"),
+                (By.CSS_SELECTOR, ".modal [data-dismiss='modal']"),
+            ]:
+                try:
+                    el = driver.find_element(by, sel)
+                    if el.is_displayed():
+                        driver.execute_script("arguments[0].click();", el)
+                except Exception:
+                    continue
+            # Text based (Accept/OK/Continue)
+            for xp in [
+                "//button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'accept')]",
+                "//a[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'accept')]",
+                "//button[contains(.,'OK') or contains(.,'Ok') or contains(.,'ok')]",
+                "//a[contains(.,'OK') or contains(.,'Ok') or contains(.,'ok')]",
+                "//button[contains(@class,'close') or contains(.,'×') or contains(.,'x')]",
+            ]:
+                try:
+                    el = driver.find_element(By.XPATH, xp)
+                    if el.is_displayed():
+                        driver.execute_script("arguments[0].click();", el)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    def _open_offer_form(self) -> bool:
+        """Navigate to a working Add Offer form. Returns True if the model input is present."""
+        driver = self.driver
+        wait = WebDriverWait(driver, 20)
+        candidates = [
+            "https://www.gsmexchange.com/en/phones",
+            "https://www.gsmexchange.com/en/phones/add",
+            "https://www.gsmexchange.com/en/trading/add-offer",
+            "https://www.gsmexchange.com/trading/add-offer",
+            "https://www.gsmexchange.com/gsm/post_offers.html",
+        ]
+        for url in candidates:
+            try:
+                driver.get(url)
+                time.sleep(2)
+                self._dismiss_gsmx_popups()
+                for by, sel in [
+                    (By.NAME, "phModelFull"),
+                    (By.CSS_SELECTOR, "input[data-component='trading/phoneAutocompleter']"),
+                    (By.CSS_SELECTOR, ".twitter-typeahead input.tt-query"),
+                ]:
+                    try:
+                        wait.until(EC.presence_of_element_located((by, sel)))
+                        self._capture_step("gsmx_offer_form", f"Offer form ready at {url}")
+                        return True
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+        self._capture_step("gsmx_offer_form_missing", "Could not locate Add Offer form")
+        return False
+
+    def _read_inline_errors(self) -> str:
+        """Collect visible inline validation and helper messages from the page."""
+        driver = self.driver
+        msgs = []
+        try:
+            nodes = driver.find_elements(By.XPATH, "//div|//span|//small|//p")
+            for n in nodes:
+                try:
+                    t = (n.text or '').strip()
+                    if not t:
+                        continue
+                    l = t.lower()
+                    if any(k in l for k in ["required", "invalid", "error", "select", "please", "missing", "must"]):
+                        msgs.append(t)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        try:
+            extra = driver.execute_script(
+                "var m=[];document.querySelectorAll('input,select,textarea').forEach(function(el){try{if(el.willValidate&&!el.checkValidity()&&el.validationMessage){m.push(el.validationMessage)}}catch(e){}});return Array.from(new Set(m)).slice(0,6);"
+            ) or []
+            for t in extra:
+                if t and t not in msgs:
+                    msgs.append(t)
+        except Exception:
+            pass
+        return "; ".join(msgs[:6])
+
+    def _verify_gsmx_listing(self, row) -> bool:
+        """Scan likely 'My offers' pages for a matching row (brand + price, with optional model)."""
+        try:
+            driver = self.driver
+            brand = (str(row.get("brand", "")).strip() or "").lower()
+            product_name = (str(row.get("product_name", "")).strip() or "").lower()
+            model = (str(row.get("model", "")).strip() or "").lower()
+            try:
+                price = row.get("price")
+                price_norm = str(int(round(float(str(price).replace(",", "").strip())))) if price is not None else ""
+            except Exception:
+                price_norm = "".join(ch for ch in str(row.get("price", "")) if ch.isdigit())
+
+            def row_is_match(text_l: str) -> bool:
+                if not text_l:
+                    return False
+                brand_ok = bool(brand and brand in text_l)
+                price_ok = bool(price_norm and price_norm in text_l)
+                model_ok = bool(model and model in text_l) or bool(product_name and product_name in text_l)
+                if brand_ok and (price_ok or model_ok):
+                    return True
+                return False
+
+            def scan_tables() -> bool:
+                try:
+                    tables = driver.find_elements(By.XPATH, "//table[contains(@class,'table') or contains(@class,'grid') or contains(@id,'offer')]")
+                    for tbl in tables:
+                        if not tbl.is_displayed():
+                            continue
+                        rows = tbl.find_elements(By.XPATH, ".//tr[td]")
+                        for r in rows[:80]:
+                            try:
+                                t = (r.text or '').strip().lower()
+                                if row_is_match(t):
+                                    return True
+                            except Exception:
+                                continue
+                    return False
+                except Exception:
+                    return False
+
+            urls = [
+                "https://www.gsmexchange.com/en/phones?tab=offers",
+                "https://www.gsmexchange.com/en/trading/my-offers",
+                "https://www.gsmexchange.com/trading/my-offers",
+                "https://www.gsmexchange.com/gsm/my_offers.html",
+            ]
+            for i, url in enumerate(urls):
+                try:
+                    driver.get(url)
+                    time.sleep(3)
+                    self._capture_step("gsmx_verify", f"Checked {url}")
+                    if scan_tables():
+                        return True
+                    if i == 0:
+                        try:
+                            driver.refresh(); time.sleep(2)
+                            if scan_tables():
+                                return True
+                        except Exception:
+                            pass
+                except Exception:
+                    continue
+            return False
+        except Exception:
+            return False
+    
     def post_listing(self, row):
         """Post listing on GSM Exchange (Phones > Add offer → I want to sell)."""
         driver = self.driver
@@ -603,8 +766,9 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             # Navigate to phones page first (new UI), then fallback to legacy offers page
             driver.get("https://www.gsmexchange.com/en/phones")
             time.sleep(2)
+            self._dismiss_gsmx_popups()
             self._capture_step("gsmx_phones", "Opened GSM Exchange phones page")
-            # Ensure the add-offer form exists; otherwise navigate to legacy
+            # Ensure the add-offer form exists; otherwise navigate to legacy, or try robust fallbacks
             form_present = False
             try:
                 driver.find_element(By.NAME, "phModelFull")
@@ -614,7 +778,16 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             if not form_present:
                 driver.get("https://www.gsmexchange.com/gsm/post_offers.html")
                 time.sleep(2)
+                self._dismiss_gsmx_popups()
                 self._capture_step("gsmx_legacy", "Opened legacy post offers page")
+                try:
+                    driver.find_element(By.NAME, "phModelFull")
+                    form_present = True
+                except Exception:
+                    form_present = False
+            if not form_present:
+                if not self._open_offer_form():
+                    return "Error: Could not open GSM Exchange Add Offer form"
 
             # Pick SELL if radio is present
             try:
@@ -818,10 +991,12 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             except Exception:
                 pass
 
-            # Submit the offer
+            # Submit the offer (site-specific selectors for primary button)
             submitted = False
             for loc in [
                 (By.CSS_SELECTOR, "button.primary.c-tOR-item[type='submit']"),
+                (By.CSS_SELECTOR, "button[type='submit'].primary"),
+                (By.CSS_SELECTOR, "button.c-tOR-item[type='submit']"),
                 (By.XPATH, "//button[@type='submit' and contains(.,'New offer') or contains(.,'Post') or contains(.,'Create') or contains(.,'Submit')]")
             ]:
                 try:
@@ -841,6 +1016,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                     (By.CSS_SELECTOR, "input[type='submit'][value*='Post' i]"),
                     (By.CSS_SELECTOR, "button[type='submit']"),
                     (By.CSS_SELECTOR, "input[type='submit']"),
+                    (By.XPATH, "//input[@type='submit' and contains(translate(@value,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'add offer')]")
                 ]:
                     try:
                         btn = driver.find_element(by, sel)
@@ -858,8 +1034,29 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             # Wait for a success cue
             time.sleep(4)
             page = driver.page_source.lower()
-            if any(k in page for k in ["success", "created", "new offer", "posted", "offer has been", "thank you", "your offer"]):
+            # Targeted success banner (site-specific)
+            try:
+                banner = driver.find_element(By.XPATH, "//div[contains(@class,'alert') and contains(@class,'success')] | //div[contains(@class,'notice') and contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'success')] | //p[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'offer has been')]")
+                if banner and banner.is_displayed():
+                    txt = (banner.text or '').strip()
+                    self._capture_step("gsmx_success_banner", txt)
+                    return "Success: GSM Exchange offer posted"
+            except Exception:
+                pass
+            # Generic success text
+            if any(k in page for k in ["offer created", "new offer", "offer posted", "successfully", "thank you", "your offer", "offer has been"]):
+                # Try to verify in My Offers for confirmation
+                if self._verify_gsmx_listing(row):
+                    return "Success: GSM Exchange offer posted and verified"
                 return "Success: GSM Exchange offer posted"
+            # Error sniffing with inline details
+            if any(k in page for k in ["invalid", "required", "please", "error", "missing", "select model", "select a model"]):
+                details = self._read_inline_errors()
+                self._capture_step("gsmx_error", f"Form error: {details}")
+                return "Error: Form submission failed - check required fields"
+            # As a final step, try verifying in My Offers even without an explicit success banner
+            if self._verify_gsmx_listing(row):
+                return "Success: GSM Exchange offer posted (verified)"
             return "Pending: Submitted offer; waiting for confirmation"
             
         except TimeoutException:
@@ -1506,7 +1703,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                     print("⚠️  Quantity field not found (txtAvailable/txtQty)")
             except Exception as e:
                 print(f"⚠️  Could not enter quantity: {e}")
-
+            
             # Price (try multiple common selectors) — normalize to integer respecting field maxlength
             try:
                 raw_price = row.get("price", "")
@@ -1702,7 +1899,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         self._capture_step("product_name_set", f"Product name: {product_name}")
                 except Exception as e:
                     print(f"⚠️  Skipping product name due to: {e}")
-
+            
             # Description: Phones use areaComments; Gadgets/Accessories use areaDesc
             try:
                 description = str(row.get("description", f"High quality {row.get('brand', 'Apple')} device in {row.get('condition', 'excellent')} condition"))
@@ -1720,10 +1917,10 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 if desc_el:
                     driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input')); arguments[0].dispatchEvent(new Event('change'));", desc_el, description)
                     print("✅ Description entered")
-                    self._capture_step("description_entered", "Entered description")
+                self._capture_step("description_entered", "Entered description")
             except Exception as e:
                 print(f"⚠️  Could not enter description: {e}")
-
+            
             # Remarks (areaRemarks) - Enhanced with memory info, using JavaScript injection (phones only)
             try:
                 remarks_field = wait.until(EC.presence_of_element_located((By.NAME, "areaRemarks")))
