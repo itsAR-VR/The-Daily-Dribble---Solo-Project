@@ -730,40 +730,16 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
             "screenshot": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZmZmIi8+CiAgICA8dGV4dCB4PSIyMDAiIHk9IjE1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzMzMyIgZm9udC1zaXplPSIxOCI+TG9hZGluZyB7cGxhdGZvcm19PC90ZXh0Pgo8L3N2Zz4="
         })
         
-        # Step 3: Login check (if needed)
+        # Step 3: 2FA notice (do NOT pre-query Gmail; only fetch code when site prompts)
         if platform in ["gsmexchange", "cellpex"]:
-            email_check_message = "Checking Gmail for verification code..."
-            verification_code = None
-            gmail_check_status = "action_required"
-            
-            if GMAIL_AVAILABLE and gmail_service:
-                try:
-                    # Actually check Gmail for verification codes
-                    email_check_message = f"Searching Gmail for {platform} verification codes..."
-                    verification_code = gmail_service.get_latest_verification_code(platform)
-                    
-                    if verification_code:
-                        email_check_message = f"✅ Found verification code: {verification_code}"
-                        gmail_check_status = "completed"
-                    else:
-                        email_check_message = "⏳ No recent verification code found. Monitoring for new emails..."
-                        gmail_check_status = "monitoring"
-                        
-                except Exception as e:
-                    email_check_message = f"❌ Gmail check failed: {str(e)}"
-                    gmail_check_status = "error"
-            else:
-                email_check_message = "⚠️ Gmail service not available - manual 2FA required"
-                gmail_check_status = "manual_required"
-            
             browser_steps.append({
                 "step": "login_check",
-                "status": gmail_check_status,
-                "message": "2FA code may be required - checking email",
+                "status": "info",
+                "message": "2FA may be required. Code will be fetched after verification page appears.",
                 "screenshot": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZmZmIi8+CiAgICA8dGV4dCB4PSIyMDAiIHk9IjE1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzMzMyIgZm9udC1zaXplPSIxOCI+TG9naW4gUGFnZTwvdGV4dD4KPC9zdmc+",
                 "requires_2fa": True,
-                "email_check": email_check_message,
-                "verification_code": verification_code,
+                "email_check": "Deferred until platform asks for code",
+                "verification_code": None,
                 "gmail_available": GMAIL_AVAILABLE
             })
         
