@@ -435,7 +435,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             except Exception:
                 pass
             wait_short = WebDriverWait(driver, 15)
-            wait_long = WebDriverWait(driver, 45)
+            wait_long = WebDriverWait(driver, 60)
 
             # Open login page and dismiss any blocking popups
             driver.get(self.LOGIN_URL)
@@ -492,6 +492,9 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 (By.CSS_SELECTOR, "input[autocomplete='username']"),
                 (By.CSS_SELECTOR, "input[name*='login' i]"),
                 (By.CSS_SELECTOR, "input[id*='login' i]"),
+                (By.CSS_SELECTOR, "input[name*='user' i]"),
+                (By.CSS_SELECTOR, "input[id*='user' i]"),
+                (By.CSS_SELECTOR, "form input:not([type='hidden'])[type='text']"),
             ]
             for by, sel in user_selectors:
                 try:
@@ -522,6 +525,8 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             pass_selectors = [
                 (By.NAME, "password"), (By.ID, "password"), (By.CSS_SELECTOR, "input[type='password']"),
                 (By.CSS_SELECTOR, "input[autocomplete='current-password']"),
+                (By.CSS_SELECTOR, "input[name*='pass' i]"),
+                (By.CSS_SELECTOR, "input[id*='pass' i]"),
             ]
             for by, sel in pass_selectors:
                 try:
@@ -605,8 +610,14 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 except Exception:
                     continue
 
-            # Final state – treat as timeout/failure
-            self._capture_step("gsmx_login_timeout", "Login timeout")
+            # Final state – capture debug and treat as timeout/failure
+            try:
+                dbg = driver.execute_script(
+                    "return {url: location.href, title: document.title, hasForm: !!document.querySelector('form'), body: (document.body && document.body.innerText) ? document.body.innerText.slice(0,800) : ''}"
+                )
+            except Exception:
+                dbg = None
+            self._capture_step("gsmx_login_timeout", f"Login timeout{(' | ' + str(dbg)) if dbg else ''}")
             return False
         except TimeoutException:
             self._capture_step("gsmx_login_timeout", "Login timeout")
@@ -1368,12 +1379,20 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             ))
             user_field.clear()
             user_field.send_keys(self.username)
+            try:
+                driver.execute_script("arguments[0].dispatchEvent(new Event('input',{bubbles:true}));", user_field)
+            except Exception:
+                pass
             
             pass_field = wait.until(EC.presence_of_element_located(
                 (By.NAME, "txtPass")
             ))
             pass_field.clear()
             pass_field.send_keys(self.password)
+            try:
+                driver.execute_script("arguments[0].dispatchEvent(new Event('input',{bubbles:true}));", pass_field)
+            except Exception:
+                pass
             self._capture_step("cellpex_login_filled", "Filled Cellpex credentials")
             
             # Submit login using the submit input
