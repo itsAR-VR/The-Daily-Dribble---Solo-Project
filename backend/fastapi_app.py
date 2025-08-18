@@ -26,6 +26,20 @@ except ImportError:
     OPENAI_AVAILABLE = False
     print("OpenAI not available. AI features will use fallback generation.")
 
+# Import GPT-5 vision navigator (robust import path)
+GPT5_NAV_AVAILABLE = False
+GPT5Navigator = None
+try:
+    try:
+        from o4_mini_high_navigator import GPT5VisionNavigator as _GPT5Navigator
+    except ImportError:
+        from backend.o4_mini_high_navigator import GPT5VisionNavigator as _GPT5Navigator
+    GPT5Navigator = _GPT5Navigator
+    GPT5_NAV_AVAILABLE = True
+except Exception:
+    GPT5Navigator = None
+    GPT5_NAV_AVAILABLE = False
+
 # Import the main script (robust path handling)
 try:
     try:
@@ -806,7 +820,34 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                         except Exception:
                             # Fallback when backend is packaged as a module
                             from backend.enhanced_platform_poster import ENHANCED_POSTERS
-                        poster = ENHANCED_POSTERS[platform](driver)
+                        # Optional: attach GPT-5 navigator to capture steps with AI analysis
+                        capture_callback = None
+                        if GPT5_NAV_AVAILABLE and os.environ.get("OPENAI_API_KEY"):
+                            try:
+                                navigator = GPT5Navigator()
+                                def _capture_cb(evt: Dict[str, Any]):
+                                    # evt: {label, timestamp, image_base64, note}
+                                    analysis = {}
+                                    try:
+                                        if evt.get("image_base64"):
+                                            analysis = navigator.analyze_image_b64(
+                                                evt["image_base64"],
+                                                task=f"{platform}: {evt.get('label','step')}",
+                                                additional_context=evt.get("note") or ""
+                                            ) or {}
+                                    except Exception:
+                                        analysis = {}
+                                    browser_steps.append({
+                                        "step": evt.get("label", "capture"),
+                                        "status": "info",
+                                        "message": evt.get("note", ""),
+                                        "screenshot_b64": evt.get("image_base64"),
+                                        "ai": analysis
+                                    })
+                                capture_callback = _capture_cb
+                            except Exception:
+                                capture_callback = None
+                        poster = ENHANCED_POSTERS[platform](driver, capture_callback=capture_callback)
                         # Login + post minimal listing
                         poster_used = True
                         success = False
