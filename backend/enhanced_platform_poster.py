@@ -424,72 +424,190 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
     LOGIN_URL = "https://www.gsmexchange.com/signin"
     
     def login_with_2fa(self) -> bool:
-        """GSM Exchange specific login with optional email 2FA."""
+        """GSM Exchange specific login with optional email 2FA.
+        Hardened with longer waits, cookie dismissal, CTA fallbacks, iframe scan and success heuristics.
+        """
         driver = self.driver
-        wait = WebDriverWait(driver, 20)
         try:
+            # Be generous with page load and element waits during login
+            try:
+                driver.set_page_load_timeout(60)
+            except Exception:
+                pass
+            wait_short = WebDriverWait(driver, 15)
+            wait_long = WebDriverWait(driver, 45)
+
+            # Open login page and dismiss any blocking popups
             driver.get(self.LOGIN_URL)
             self._capture_step("gsmx_login_page", f"Opened login page: {self.LOGIN_URL}")
+            try:
+                self._dismiss_gsmx_popups()
+            except Exception:
+                pass
 
-            # Fill credentials (support multiple selector variants)
-            user_field = None
-            for by, sel in [
-                (By.NAME, "email"), (By.ID, "email"), (By.CSS_SELECTOR, "input[type='email']"),
-                (By.NAME, "username"), (By.ID, "username"),
+            # Sometimes the email/password form is hidden behind a CTA – try a few obvious ones
+            for xp in [
+                "//button[contains(.,'Sign in') or contains(.,'Log in') or contains(.,'Continue')]",
+                "//a[contains(.,'Sign in') or contains(.,'Log in') or contains(.,'Continue')]",
+                "//button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'email')]",
+                "//a[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'email')]",
             ]:
                 try:
-                    user_field = wait.until(EC.presence_of_element_located((by, sel)))
+                    el = driver.find_element(By.XPATH, xp)
+                    if el.is_displayed():
+                        driver.execute_script("arguments[0].click();", el)
+                        time.sleep(1)
+                        self._dismiss_gsmx_popups()
+                except Exception:
+                    continue
+
+            # If the form is inside an iframe, try to switch to it
+            def _try_switch_to_login_iframe() -> bool:
+                try:
+                    iframes = driver.find_elements(By.TAG_NAME, "iframe")
+                except Exception:
+                    iframes = []
+                for i, fr in enumerate(iframes[:6]):
+                    try:
+                        driver.switch_to.default_content()
+                        driver.switch_to.frame(fr)
+                        # Probe for username/email field quickly
+                        if driver.find_elements(By.CSS_SELECTOR, "input[type='email'], input[name='email'], input#email, input#username"):
+                            return True
+                    except Exception:
+                        continue
+                try:
+                    driver.switch_to.default_content()
+                except Exception:
+                    pass
+                return False
+
+            _try_switch_to_login_iframe()
+
+            # Locate username/email field with broad selector set
+            user_field = None
+            user_selectors = [
+                (By.NAME, "email"), (By.ID, "email"), (By.CSS_SELECTOR, "input[type='email']"),
+                (By.NAME, "username"), (By.ID, "username"),
+                (By.CSS_SELECTOR, "input[autocomplete='username']"),
+                (By.CSS_SELECTOR, "input[name*='login' i]"),
+                (By.CSS_SELECTOR, "input[id*='login' i]"),
+            ]
+            for by, sel in user_selectors:
+                try:
+                    user_field = wait_long.until(EC.presence_of_element_located((by, sel)))
                     break
                 except Exception:
                     continue
             if not user_field:
+                # Try once more after clicking likely CTAs and switching frames again
+                _try_switch_to_login_iframe()
+                self._dismiss_gsmx_popups()
+                for by, sel in user_selectors:
+                    try:
+                        user_field = wait_short.until(EC.presence_of_element_located((by, sel)))
+                        break
+                    except Exception:
+                        continue
+            if not user_field:
                 raise TimeoutException("username/email input not found")
-            user_field.clear(); user_field.send_keys(self.username)
+            try:
+                user_field.clear()
+            except Exception:
+                pass
+            user_field.send_keys(self.username)
 
+            # Locate password field with broad selector set
             pass_field = None
-            for by, sel in [
-                (By.NAME, "password"), (By.ID, "password"), (By.CSS_SELECTOR, "input[type='password']")
-            ]:
+            pass_selectors = [
+                (By.NAME, "password"), (By.ID, "password"), (By.CSS_SELECTOR, "input[type='password']"),
+                (By.CSS_SELECTOR, "input[autocomplete='current-password']"),
+            ]
+            for by, sel in pass_selectors:
                 try:
-                    pass_field = wait.until(EC.presence_of_element_located((by, sel)))
+                    pass_field = wait_long.until(EC.presence_of_element_located((by, sel)))
                     break
                 except Exception:
                     continue
             if not pass_field:
                 raise TimeoutException("password input not found")
-            pass_field.clear(); pass_field.send_keys(self.password)
+            try:
+                pass_field.clear()
+            except Exception:
+                pass
+            pass_field.send_keys(self.password)
             self._capture_step("gsmx_login_filled", "Filled GSMX credentials")
 
-            # Submit
+            # Submit the form
             submitted = False
             for by, sel in [
                 (By.CSS_SELECTOR, "button[type='submit']"),
                 (By.CSS_SELECTOR, "input[type='submit']"),
-                (By.XPATH, "//button[contains(.,'Sign in') or contains(.,'Login') or contains(.,'Log in')]")
+                (By.XPATH, "//button[contains(.,'Sign in') or contains(.,'Login') or contains(.,'Log in') or contains(.,'Continue')]")
             ]:
                 try:
                     btn = driver.find_element(by, sel)
+                    driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", btn)
+                    time.sleep(0.2)
+                    self._dismiss_gsmx_popups()
                     driver.execute_script("arguments[0].click();", btn)
                     submitted = True
                     break
                 except Exception:
                     continue
             if not submitted:
-                pass_field.send_keys("\n")
+                try:
+                    pass_field.send_keys("\n")
+                    submitted = True
+                except Exception:
+                    pass
             self._capture_step("gsmx_login_submitted", "Submitted GSMX login")
 
-            time.sleep(2)
-            # 2FA detection – look for code prompt or OTP field
+            # Give time for redirect and check for 2FA prompt
+            time.sleep(3)
+            try:
+                self._dismiss_gsmx_popups()
+            except Exception:
+                pass
             page_l = driver.page_source.lower()
-            two_fa = any(k in page_l for k in ["verification", "2fa", "enter code", "security code", "authentication code"]) or \
-                bool(driver.find_elements(By.XPATH, "//input[@name='code' or @name='otp' or @name='token']"))
-            if two_fa:
+            needs_2fa = any(k in page_l for k in [
+                "verification", "verify your identity", "2fa", "enter code", "security code", "authentication code"
+            ]) or bool(driver.find_elements(By.XPATH, "//input[@name='code' or @name='otp' or @name='token']"))
+            if needs_2fa:
                 self._capture_step("gsmx_2fa_page", "GSMX 2FA verification page detected")
-                ok = self._handle_gsmx_2fa()
-                if not ok:
+                if not self._handle_gsmx_2fa():
                     return False
-            # Success check
-            return self._check_login_success()
+
+            # Heuristic success: URL no longer contains 'signin' and page has dashboard/account keywords
+            try:
+                WebDriverWait(driver, 20).until(lambda d: "signin" not in (d.current_url or "").lower())
+            except Exception:
+                pass
+            if self._check_login_success():
+                self._capture_step("gsmx_login_success", "Logged in to GSMX")
+                return True
+
+            # As a fallback, try alternative login routes once more if we still appear logged out
+            for url in [
+                "https://www.gsmexchange.com/login",
+                "https://www.gsmexchange.com/en/login",
+                "https://www.gsmexchange.com/en/signin",
+                "https://www.gsmexchange.com/trading/signin",
+            ]:
+                try:
+                    driver.get(url)
+                    time.sleep(2)
+                    self._dismiss_gsmx_popups()
+                    # Quick probe for already-authenticated state
+                    if self._check_login_success():
+                        self._capture_step("gsmx_login_success", f"Logged in via fallback: {url}")
+                        return True
+                except Exception:
+                    continue
+
+            # Final state – treat as timeout/failure
+            self._capture_step("gsmx_login_timeout", "Login timeout")
+            return False
         except TimeoutException:
             self._capture_step("gsmx_login_timeout", "Login timeout")
             return False
