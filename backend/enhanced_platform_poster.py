@@ -403,9 +403,9 @@ class Enhanced2FAMarketplacePoster:
         # Platform-specific success indicators
         success_indicators = {
             'hubx': ['dashboard', 'inventory', 'sell'],
+            # GSMX: avoid generic words (e.g., 'phones' appears on public pages). Use account/offer cues.
             'gsmexchange': [
-                'my account', 'post listing', 'dashboard',
-                'phones', 'add offer', 'new offer', 'post offers'
+                'my account', 'my offers', 'logout', 'add offer', 'new offer', 'post offers', 'trading'
             ],
             'cellpex': ['dashboard', 'listings', 'profile'],
             'kardof': ['panel', 'listings', 'account'],
@@ -582,6 +582,32 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             self._capture_step("gsmx_login_page", f"Opened login page: {self.LOGIN_URL}")
             try:
                 self._dismiss_gsmx_popups()
+            except Exception:
+                pass
+
+            # If /signin returns Not Found (their site does this when already logged in),
+            # treat it as an already-authenticated session by probing /en/phones.
+            try:
+                probe = driver.execute_script(
+                    "return {title: document.title, forms: document.querySelectorAll('form').length, body: (document.body && document.body.innerText) ? document.body.innerText.slice(0,600).toLowerCase() : ''}"
+                )
+            except Exception:
+                probe = None
+            try:
+                is_signin_404 = False
+                if probe:
+                    ttl = (probe.get('title','') or '').lower()
+                    bod = (probe.get('body','') or '').lower()
+                    forms_n = int(probe.get('forms', 0) or 0)
+                    is_signin_404 = ('not found' in ttl) or ('not found' in bod) or (forms_n == 0)
+                if is_signin_404:
+                    self._capture_step("gsmx_signin_404_probe", "Signin page looks Not Found/empty, probing /en/phones for session")
+                    driver.get("https://www.gsmexchange.com/en/phones")
+                    time.sleep(2)
+                    self._dismiss_gsmx_popups()
+                    if self._check_login_success():
+                        self._capture_step("gsmx_already_logged_in", "Detected active session via /en/phones")
+                        return True
             except Exception:
                 pass
 
@@ -807,6 +833,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 "https://www.gsmexchange.com/en/login",
                 "https://www.gsmexchange.com/en/signin",
                 "https://www.gsmexchange.com/trading/signin",
+                "https://www.gsmexchange.com/en/phones",
             ]:
                 try:
                     driver.get(url)
