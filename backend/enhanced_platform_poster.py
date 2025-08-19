@@ -41,6 +41,10 @@ class Enhanced2FAMarketplacePoster:
         self.tfa_wait_time = 30  # seconds to wait for 2FA code
         self._capture_callback = capture_callback
         self.last_steps = []
+        # Adaptive pacing baseline (ms)
+        self._pace_slow_ms = 200
+        self._pace_fast_ms = 60
+        self._last_action_ts = time.time()
 
     def _capture_step(self, step: str, message: str = "") -> None:
         """Capture a screenshot into base64 and append to steps."""
@@ -61,6 +65,47 @@ class Enhanced2FAMarketplacePoster:
                 })
             except Exception:
                 pass
+    
+    # ---- Cookie/session helpers ----
+    def _save_cookies(self, scope: str) -> None:
+        try:
+            cookies = self.driver.get_cookies()
+            os.makedirs("/tmp/listing_cookies", exist_ok=True)
+            path = f"/tmp/listing_cookies/{self.PLATFORM.lower()}_{scope}.json"
+            import json
+            with open(path, "w") as f:
+                json.dump(cookies, f)
+        except Exception:
+            pass
+
+    def _load_cookies(self, scope: str) -> bool:
+        try:
+            path = f"/tmp/listing_cookies/{self.PLATFORM.lower()}_{scope}.json"
+            import json
+            if not os.path.exists(path):
+                return False
+            with open(path, "r") as f:
+                cookies = json.load(f)
+            for c in cookies:
+                try:
+                    self.driver.add_cookie(c)
+                except Exception:
+                    continue
+            return True
+        except Exception:
+            return False
+
+    # ---- Adaptive pacing ----
+    def _pace(self, fast: bool = False) -> None:
+        try:
+            target = self._pace_fast_ms if fast else self._pace_slow_ms
+            elapsed = (time.time() - self._last_action_ts) * 1000.0
+            sleep_ms = max(0.0, target - elapsed)
+            if sleep_ms > 0:
+                time.sleep(sleep_ms / 1000.0)
+            self._last_action_ts = time.time()
+        except Exception:
+            pass
     
     def _load_credentials(self) -> tuple[str, str]:
         """Load platform credentials from environment variables"""
@@ -568,6 +613,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             except Exception:
                 pass
             self._human_wiggle_mouse(2)
+            self._pace()
 
             # Be generous with page load and element waits during login
             try:
@@ -578,6 +624,16 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             wait_long = WebDriverWait(driver, 60)
 
             # Open login page and dismiss any blocking popups
+            # Try to restore cookies first to avoid unnecessary login
+            try:
+                driver.get("https://www.gsmexchange.com/")
+                self._pace()
+                if self._load_cookies("session"):
+                    self._capture_step("gsmx_cookies_loaded", "Restored session cookies")
+                    driver.refresh(); time.sleep(1.5)
+            except Exception:
+                pass
+
             driver.get(self.LOGIN_URL)
             self._capture_step("gsmx_login_page", f"Opened login page: {self.LOGIN_URL}")
             try:
@@ -607,6 +663,10 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                     self._dismiss_gsmx_popups()
                     if self._check_login_success():
                         self._capture_step("gsmx_already_logged_in", "Detected active session via /en/phones")
+                        try:
+                            self._save_cookies("session")
+                        except Exception:
+                            pass
                         return True
             except Exception:
                 pass
@@ -825,6 +885,10 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 pass
             if self._check_login_success():
                 self._capture_step("gsmx_login_success", "Logged in to GSMX")
+                try:
+                    self._save_cookies("session")
+                except Exception:
+                    pass
                 return True
 
             # As a fallback, try alternative login routes once more if we still appear logged out
@@ -842,6 +906,10 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                     # Quick probe for already-authenticated state
                     if self._check_login_success():
                         self._capture_step("gsmx_login_success", f"Logged in via fallback: {url}")
+                        try:
+                            self._save_cookies("session")
+                        except Exception:
+                            pass
                         return True
                 except Exception:
                     continue
