@@ -1,0 +1,11 @@
+{
+  "snapshot": "snapshot-20250813-7f14fb2e-cd1b-411c-9b46-13efb356b59b",
+  "install": "PY=python3; V=.venv; ($PY -m venv \"$V\" 2>/dev/null || $PY -m venv \"$V\" --without-pip || true); if [ -x \"$V/bin/python\" ]; then curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py && \"$V/bin/python\" /tmp/get-pip.py; \"$V/bin/python\" -m pip install -U pip setuptools wheel; \"$V/bin/python\" -m pip install -r requirements.txt || \"$V/bin/python\" -m pip install --break-system-packages -r requirements.txt || true; else $PY -m pip install --user -U pip setuptools wheel || true; PIP_BREAK_SYSTEM_PACKAGES=1 $PY -m pip install --user -r requirements.txt || true; fi; command -v npm >/dev/null && (cd frontend && npm ci --no-audit --no-fund) || true",
+  "start": "(test -x .venv/bin/python && VPY=.venv/bin/python || VPY=python3; pkill -f uvicorn || true; ($VPY -m uvicorn backend.fastapi_app:app --host 0.0.0.0 --port ${PORT:-8000} &) && (cd frontend && npm run dev))",
+  "terminals": [
+    {
+      "name": "Single",
+      "command": "source .venv/bin/activate && (uvicorn backend.fastapi_app:app --host 127.0.0.1 --port 8000 &) && (cd frontend && npm run dev)"
+    }
+  ]
+}
