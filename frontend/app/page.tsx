@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { useDropzone } from "react-dropzone"
+import PHONE_CATALOG from "../data/phoneCatalog"
 
 const API_BASE_URL = "https://listing-bot-api-production.up.railway.app"
 
@@ -140,6 +141,7 @@ export default function ListingBotUI() {
   const [items, setItems] = useState<ComprehensiveListingItem[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [productSuggestions, setProductSuggestions] = useState<string[]>([])
+  const [phoneCatalog, setPhoneCatalog] = useState<string[]>(PHONE_CATALOG)
   const [gmailStatus, setGmailStatus] = useState<"unknown" | "authenticated" | "requires_auth" | "not_configured">("unknown")
   const [gmailRefreshToken, setGmailRefreshToken] = useState<string>("")
 
@@ -170,6 +172,7 @@ export default function ListingBotUI() {
     if (saved) {
       setProductSuggestions(JSON.parse(saved))
     }
+    // Persist suggestions across sessions
     // Load Gmail auth status on mount
     ;(async () => {
       try {
@@ -713,6 +716,7 @@ export default function ListingBotUI() {
 
   return (
     <div className="container mx-auto p-6 max-w-6xl">
+      {/* Phone catalog provided via PHONE_CATALOG import */}
       {/* Gmail Connect Section */}
       <Card className="mb-6">
         <CardHeader>
@@ -970,14 +974,33 @@ export default function ListingBotUI() {
                       />
                     </div>
 
-                    {/* Product Name */}
+                    {/* Product Name with local autocomplete */}
                     <div className="space-y-2">
                       <Label>Product Name</Label>
-                      <Input
-                        value={item.productName}
-                        onChange={(e) => updateItem(item.id, { productName: e.target.value })}
-                        placeholder="e.g., iPhone 14 Pro"
-                      />
+                      <div className="relative">
+                        <Input
+                          value={item.productName}
+                          onChange={(e) => updateItem(item.id, { productName: e.target.value })}
+                          placeholder="e.g., iPhone 14 Pro"
+                          autoComplete="off"
+                        />
+                        {!!item.productName && phoneCatalog.length > 0 && (
+                          <div className="absolute z-10 mt-1 w-full max-h-52 overflow-auto rounded-md border bg-popover text-popover-foreground shadow">
+                            {phoneCatalog
+                              .filter(n => n.toLowerCase().includes(item.productName.toLowerCase()))
+                              .slice(0, 20)
+                              .map(name => (
+                                <div
+                                  key={name}
+                                  className="px-3 py-2 cursor-pointer hover:bg-accent"
+                                  onMouseDown={(e) => { e.preventDefault(); updateItem(item.id, { productName: name }) }}
+                                >
+                                  {name}
+                                </div>
+                              ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Model Code */}
