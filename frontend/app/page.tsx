@@ -172,6 +172,45 @@ export default function ListingBotUI() {
     if (saved) {
       setProductSuggestions(JSON.parse(saved))
     }
+    // Hydrate phone catalog from a reputable public dataset (Android certified devices) when available
+    ;(async () => {
+      try {
+        const cached = localStorage.getItem("phoneCatalogCache")
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached)
+            if (Array.isArray(parsed?.data) && parsed.data.length >= 1000) {
+              setPhoneCatalog(parsed.data)
+              return
+            }
+          } catch {}
+        }
+        const ANDROID_URL = "https://raw.githubusercontent.com/androidtrackers/certified-android-devices/master/devices.json"
+        const res = await fetch(ANDROID_URL, { cache: "no-store" })
+        if (res.ok) {
+          const json = await res.json()
+          if (Array.isArray(json)) {
+            const set = new Set<string>()
+            for (let i = 0; i < json.length; i++) {
+              const item = json[i] as any
+              const brand = (item?.brand || item?.Brand || "").toString().trim()
+              const name = (item?.name || item?.Name || "").toString().trim()
+              if (!brand || !name) continue
+              const label = `${brand} ${name}`.replace(/\s+/g, " ").trim()
+              if (label.length >= 5) set.add(label)
+              if (set.size >= 5000) break
+            }
+            const arr = Array.from(set).sort()
+            if (arr.length >= 1000) {
+              setPhoneCatalog(arr)
+              localStorage.setItem("phoneCatalogCache", JSON.stringify({ ts: Date.now(), data: arr }))
+            }
+          }
+        }
+      } catch {
+        // Ignore network errors; rely on bundled PHONE_CATALOG
+      }
+    })()
     // Persist suggestions across sessions
     // Load Gmail auth status on mount
     ;(async () => {
