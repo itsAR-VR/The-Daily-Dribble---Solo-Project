@@ -670,7 +670,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 pass
             self._human_type(user_field, self.username)
 
-            # Locate password field with broad selector set
+            # Locate password field with progressive flow support (email -> Continue -> password)
             pass_field = None
             pass_selectors = [
                 (By.NAME, "password"), (By.ID, "password"), (By.CSS_SELECTOR, "input[type='password']"),
@@ -678,14 +678,63 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 (By.CSS_SELECTOR, "input[name*='pass' i]"),
                 (By.CSS_SELECTOR, "input[id*='pass' i]"),
             ]
+            # First, try a short wait in case both fields are on the same page
             for by, sel in pass_selectors:
                 try:
-                    pass_field = wait_long.until(EC.presence_of_element_located((by, sel)))
+                    pass_field = WebDriverWait(driver, 10).until(EC.presence_of_element_located((by, sel)))
                     break
                 except Exception:
                     continue
             if not pass_field:
-                raise TimeoutException("password input not found")
+                # Try clicking a progressive CTA (Continue/Next) to reveal password screen
+                for xp in [
+                    "//button[contains(.,'Continue') or contains(.,'Next')]",
+                    "//a[contains(.,'Continue') or contains(.,'Next')]",
+                    "//button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'password')]",
+                ]:
+                    try:
+                        el = driver.find_element(By.XPATH, xp)
+                        if el.is_displayed():
+                            self._capture_step("gsmx_progressive_continue", f"Clicking progressive CTA: {xp}")
+                            self._human_click(el)
+                            time.sleep(1.2)
+                            self._dismiss_gsmx_popups()
+                            _try_switch_to_login_iframe()
+                            break
+                    except Exception:
+                        continue
+                # Now wait longer for the password field to appear
+                for by, sel in pass_selectors:
+                    try:
+                        pass_field = wait_long.until(EC.presence_of_element_located((by, sel)))
+                        break
+                    except Exception:
+                        continue
+            if not pass_field:
+                # As a last attempt, click any obvious Sign in/Login CTA again to surface the form
+                for xp in [
+                    "//button[contains(.,'Sign in') or contains(.,'Log in') or contains(.,'Login')]",
+                    "//a[contains(.,'Sign in') or contains(.,'Log in') or contains(.,'Login')]",
+                ]:
+                    try:
+                        el = driver.find_element(By.XPATH, xp)
+                        if el.is_displayed():
+                            self._human_click(el)
+                            time.sleep(1.2)
+                            self._dismiss_gsmx_popups()
+                            _try_switch_to_login_iframe()
+                            for by, sel in pass_selectors:
+                                try:
+                                    pass_field = WebDriverWait(driver, 10).until(EC.presence_of_element_located((by, sel)))
+                                    break
+                                except Exception:
+                                    continue
+                            if pass_field:
+                                break
+                    except Exception:
+                        continue
+            if not pass_field:
+                raise TimeoutException("password input not found (after progressive attempts)")
             try:
                 pass_field.clear()
             except Exception:
@@ -780,7 +829,13 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             self._capture_step("gsmx_login_timeout", f"Login timeout{(' | ' + str(dbg)) if dbg else ''}")
             return False
         except TimeoutException:
-            self._capture_step("gsmx_login_timeout", "Login timeout")
+            try:
+                dbg = self.driver.execute_script(
+                    "return {url: location.href, title: document.title, iframes: document.querySelectorAll('iframe').length, forms: document.querySelectorAll('form').length, body: (document.body && document.body.innerText) ? document.body.innerText.slice(0,800) : ''}"
+                )
+            except Exception:
+                dbg = None
+            self._capture_step("gsmx_login_timeout", f"Login timeout{(' | ' + str(dbg)) if dbg else ''}")
             return False
         except Exception as e:
             self._capture_step("gsmx_login_error", f"{e}")
