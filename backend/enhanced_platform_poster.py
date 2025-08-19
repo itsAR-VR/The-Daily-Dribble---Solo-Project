@@ -423,12 +423,152 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
     PLATFORM = "GSMEXCHANGE"
     LOGIN_URL = "https://www.gsmexchange.com/signin"
     
+    # -------- Anti-bot hardening helpers (stealth + human-like interaction) --------
+    def _install_stealth(self) -> None:
+        """Install basic stealth overrides via Chrome DevTools and pre-page scripts."""
+        driver = self.driver
+        try:
+            # User agent + locale + timezone overrides
+            try:
+                driver.execute_cdp_cmd("Network.setUserAgentOverride", {
+                    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                })
+            except Exception:
+                pass
+            try:
+                driver.execute_cdp_cmd("Emulation.setLocaleOverride", {"locale": "en-US"})
+            except Exception:
+                pass
+            try:
+                driver.execute_cdp_cmd("Emulation.setTimezoneOverride", {"timezoneId": "America/New_York"})
+            except Exception:
+                pass
+
+            # Stealth script evaluated before document scripts
+            stealth_script = """
+                // Navigator.webdriver
+                Object.defineProperty(Navigator.prototype, 'webdriver', { get: () => undefined });
+                // Languages
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                // Plugins
+                Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+                // Chrome runtime
+                window.chrome = window.chrome || { runtime: {} };
+                // WebGL vendor/renderer spoof
+                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(parameter){
+                  if (parameter === 37445) { return 'Intel Inc.'; } // UNMASKED_VENDOR_WEBGL
+                  if (parameter === 37446) { return 'Intel Iris OpenGL Engine'; } // UNMASKED_RENDERER_WEBGL
+                  return getParameter.call(this, parameter);
+                };
+            """
+            try:
+                driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": stealth_script})
+            except Exception:
+                # Fallback: inject after load as well (less effective but harmless)
+                try:
+                    driver.execute_script(stealth_script)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _human_pause(self, min_ms: int = 60, max_ms: int = 180) -> None:
+        import random, time as _t
+        try:
+            _t.sleep(random.uniform(min_ms/1000.0, max_ms/1000.0))
+        except Exception:
+            pass
+
+    def _human_wiggle_mouse(self, intensity: int = 3) -> None:
+        """Small, human-like cursor movements to reduce static cursor signature."""
+        try:
+            from selenium.webdriver.common.action_chains import ActionChains as _AC
+            import random
+            ac = _AC(self.driver)
+            for _ in range(intensity):
+                try:
+                    ac.move_by_offset(random.randint(-5, 5), random.randint(-3, 3)).pause(random.uniform(0.05, 0.15)).perform()
+                except Exception:
+                    break
+        except Exception:
+            pass
+
+    def _human_click(self, element) -> bool:
+        try:
+            from selenium.webdriver.common.action_chains import ActionChains as _AC
+            import random
+            self._human_wiggle_mouse(2)
+            ac = _AC(self.driver)
+            try:
+                ac.move_to_element(element).pause(random.uniform(0.1, 0.25)).perform()
+                # jitter
+                ac.move_by_offset(random.randint(-2, 2), random.randint(-2, 2)).pause(random.uniform(0.05, 0.15)).click().perform()
+                return True
+            except Exception:
+                pass
+            # Fallback: direct click
+            try:
+                element.click()
+                return True
+            except Exception:
+                pass
+            # Last resort: JS click
+            try:
+                self.driver.execute_script("arguments[0].click();", element)
+                return True
+            except Exception:
+                return False
+        except Exception:
+            return False
+
+    def _human_type(self, element, text: str) -> None:
+        import random, time as _t
+        try:
+            element.click()
+        except Exception:
+            try:
+                self._human_click(element)
+            except Exception:
+                pass
+        for ch in str(text):
+            try:
+                element.send_keys(ch)
+            except Exception:
+                # Small refocus attempt
+                try:
+                    element.click(); element.send_keys(ch)
+                except Exception:
+                    pass
+            _t.sleep(random.uniform(0.04, 0.11))
+            # Occasional micro-pause
+            if random.random() < 0.08:
+                _t.sleep(random.uniform(0.15, 0.35))
+
+    def _bot_block_detected(self) -> bool:
+        try:
+            body_l = (self.driver.page_source or "").lower()
+            markers = [
+                "captcha", "are you human", "unusual activity", "bot", "access denied", "verify you are",
+                "incapsula", "cloudflare", "ddos", "robot check"
+            ]
+            return any(m in body_l for m in markers)
+        except Exception:
+            return False
+
     def login_with_2fa(self) -> bool:
         """GSM Exchange specific login with optional email 2FA.
         Hardened with longer waits, cookie dismissal, CTA fallbacks, iframe scan and success heuristics.
         """
         driver = self.driver
         try:
+            # Install stealth and human-like behavior before first navigation
+            try:
+                self._install_stealth()
+            except Exception:
+                pass
+            self._human_wiggle_mouse(2)
+
             # Be generous with page load and element waits during login
             try:
                 driver.set_page_load_timeout(60)
@@ -445,6 +585,16 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             except Exception:
                 pass
 
+            if self._bot_block_detected():
+                self._capture_step("gsmx_bot_block", "Captcha or bot-detection page detected at login")
+                # Try a small wait and refresh once to allow human-like retry
+                time.sleep(3)
+                try:
+                    driver.refresh(); time.sleep(2)
+                    self._dismiss_gsmx_popups()
+                except Exception:
+                    pass
+
             # Sometimes the email/password form is hidden behind a CTA – try a few obvious ones
             for xp in [
                 "//button[contains(.,'Sign in') or contains(.,'Log in') or contains(.,'Continue')]",
@@ -455,7 +605,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 try:
                     el = driver.find_element(By.XPATH, xp)
                     if el.is_displayed():
-                        driver.execute_script("arguments[0].click();", el)
+                        self._human_click(el)
                         time.sleep(1)
                         self._dismiss_gsmx_popups()
                 except Exception:
@@ -518,7 +668,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 user_field.clear()
             except Exception:
                 pass
-            user_field.send_keys(self.username)
+            self._human_type(user_field, self.username)
 
             # Locate password field with broad selector set
             pass_field = None
@@ -540,7 +690,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 pass_field.clear()
             except Exception:
                 pass
-            pass_field.send_keys(self.password)
+            self._human_type(pass_field, self.password)
             self._capture_step("gsmx_login_filled", "Filled GSMX credentials")
 
             # Submit the form
@@ -555,7 +705,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                     driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", btn)
                     time.sleep(0.2)
                     self._dismiss_gsmx_popups()
-                    driver.execute_script("arguments[0].click();", btn)
+                    self._human_click(btn)
                     submitted = True
                     break
                 except Exception:
@@ -574,6 +724,16 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 self._dismiss_gsmx_popups()
             except Exception:
                 pass
+
+            if self._bot_block_detected():
+                self._capture_step("gsmx_bot_block", "Captcha or bot-detection screen after submit")
+                # Wait a little and do a gentle refresh once
+                time.sleep(3)
+                try:
+                    driver.refresh(); time.sleep(2)
+                    self._dismiss_gsmx_popups()
+                except Exception:
+                    pass
             page_l = driver.page_source.lower()
             needs_2fa = any(k in page_l for k in [
                 "verification", "verify your identity", "2fa", "enter code", "security code", "authentication code"
