@@ -140,8 +140,10 @@ function DragDropCsv({ onFile, children }: { onFile: (f: File) => void, children
 export default function ListingBotUI() {
   const [items, setItems] = useState<ComprehensiveListingItem[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
+  type PhoneEntry = { brand: string; model: string; label: string }
   const [productSuggestions, setProductSuggestions] = useState<string[]>([])
-  const [phoneCatalog, setPhoneCatalog] = useState<string[]>(PHONE_CATALOG)
+  const [phoneCatalog, setPhoneCatalog] = useState<PhoneEntry[]>([])
+  const [activeSuggestItemId, setActiveSuggestItemId] = useState<string | null>(null)
   const [gmailStatus, setGmailStatus] = useState<"unknown" | "authenticated" | "requires_auth" | "not_configured">("unknown")
   const [gmailRefreshToken, setGmailRefreshToken] = useState<string>("")
 
@@ -175,12 +177,31 @@ export default function ListingBotUI() {
     // Hydrate phone catalog from a reputable public dataset (Android certified devices) when available
     ;(async () => {
       try {
-        const cached = localStorage.getItem("phoneCatalogCache")
-        if (cached) {
+        // Prefer V2 cache with structured entries
+        const cachedV2 = localStorage.getItem("phoneCatalogCacheV2")
+        if (cachedV2) {
           try {
-            const parsed = JSON.parse(cached)
-            if (Array.isArray(parsed?.data) && parsed.data.length >= 1000) {
+            const parsed = JSON.parse(cachedV2)
+            if (Array.isArray(parsed?.data) && parsed.data.length >= 500) {
               setPhoneCatalog(parsed.data)
+              return
+            }
+          } catch {}
+        }
+        // Fallback: try legacy cache and convert to entries
+        const cachedLegacy = localStorage.getItem("phoneCatalogCache")
+        if (cachedLegacy) {
+          try {
+            const parsed = JSON.parse(cachedLegacy)
+            if (Array.isArray(parsed?.data) && parsed.data.length >= 500) {
+              const converted: PhoneEntry[] = (parsed.data as string[]).map((label: string) => {
+                const parts = (label || "").trim().split(/\s+/)
+                const brand = parts.shift() || ""
+                const model = parts.join(" ")
+                return { brand, model, label }
+              })
+              setPhoneCatalog(converted)
+              localStorage.setItem("phoneCatalogCacheV2", JSON.stringify({ ts: Date.now(), data: converted }))
               return
             }
           } catch {}
@@ -190,25 +211,40 @@ export default function ListingBotUI() {
         if (res.ok) {
           const json = await res.json()
           if (Array.isArray(json)) {
-            const set = new Set<string>()
+            const entries: PhoneEntry[] = []
+            const seen = new Set<string>()
             for (let i = 0; i < json.length; i++) {
               const item = json[i] as any
               const brand = (item?.brand || item?.Brand || "").toString().trim()
               const name = (item?.name || item?.Name || "").toString().trim()
               if (!brand || !name) continue
               const label = `${brand} ${name}`.replace(/\s+/g, " ").trim()
-              if (label.length >= 5) set.add(label)
-              if (set.size >= 5000) break
+              const key = `${brand.toLowerCase()}|${name.toLowerCase()}`
+              if (label.length >= 3 && !seen.has(key)) {
+                seen.add(key)
+                entries.push({ brand, model: name, label })
+              }
+              if (entries.length >= 5000) break
             }
-            const arr = Array.from(set).sort()
-            if (arr.length >= 1000) {
-              setPhoneCatalog(arr)
-              localStorage.setItem("phoneCatalogCache", JSON.stringify({ ts: Date.now(), data: arr }))
+            if (entries.length >= 500) {
+              entries.sort((a, b) => a.label.localeCompare(b.label))
+              setPhoneCatalog(entries)
+              localStorage.setItem("phoneCatalogCacheV2", JSON.stringify({ ts: Date.now(), data: entries }))
             }
           }
         }
       } catch {
         // Ignore network errors; rely on bundled PHONE_CATALOG
+        try {
+          // Convert bundled fallback strings to structured entries
+          const fallback: PhoneEntry[] = (PHONE_CATALOG as unknown as string[]).map((label) => {
+            const parts = (label || "").trim().split(/\s+/)
+            const brand = parts.shift() || ""
+            const model = parts.join(" ")
+            return { brand, model, label }
+          })
+          setPhoneCatalog(fallback)
+        } catch {}
       }
     })()
     // Persist suggestions across sessions
@@ -1013,7 +1049,7 @@ export default function ListingBotUI() {
                       />
                     </div>
 
-                    {/* Product Name with local autocomplete */}
+                    {/* Product Name with focus/blur-controlled autocomplete (model-only) */}
                     <div className="space-y-2">
                       <Label>Product Name</Label>
                       <div className="relative">
@@ -1022,21 +1058,35 @@ export default function ListingBotUI() {
                           onChange={(e) => updateItem(item.id, { productName: e.target.value })}
                           placeholder="e.g., iPhone 14 Pro"
                           autoComplete="off"
+                          onFocus={() => setActiveSuggestItemId(item.id)}
+                          onBlur={() => setActiveSuggestItemId((curr) => (curr === item.id ? null : curr))}
                         />
-                        {!!item.productName && phoneCatalog.length > 0 && (
+                        {activeSuggestItemId === item.id && phoneCatalog.length > 0 && (
                           <div className="absolute z-10 mt-1 w-full max-h-52 overflow-auto rounded-md border bg-popover text-popover-foreground shadow">
-                            {phoneCatalog
-                              .filter(n => n.toLowerCase().includes(item.productName.toLowerCase()))
-                              .slice(0, 20)
-                              .map(name => (
+                            {(() => {
+                              const q = (item.productName || "").toLowerCase()
+                              const brandFilter = (item.brand || "").toLowerCase()
+                              const matches = phoneCatalog.filter((p) => {
+                                const brandOk = brandFilter ? p.brand.toLowerCase() === brandFilter : true
+                                const qOk = q ? (p.model.toLowerCase().includes(q) || p.label.toLowerCase().includes(q)) : true
+                                return brandOk && qOk
+                              }).slice(0, 20)
+                              return matches.map((p) => (
                                 <div
-                                  key={name}
+                                  key={p.label}
                                   className="px-3 py-2 cursor-pointer hover:bg-accent"
-                                  onMouseDown={(e) => { e.preventDefault(); updateItem(item.id, { productName: name }) }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault()
+                                    // Set model only; brand stays separate
+                                    updateItem(item.id, { productName: p.model, brand: item.brand || p.brand })
+                                    setActiveSuggestItemId(null)
+                                  }}
                                 >
-                                  {name}
+                                  {p.model}
+                                  <span className="ml-2 text-xs text-muted-foreground">{p.brand}</span>
                                 </div>
-                              ))}
+                              ))
+                            })()}
                           </div>
                         )}
                       </div>

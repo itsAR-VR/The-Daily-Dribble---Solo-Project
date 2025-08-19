@@ -144,14 +144,7 @@ export const PHONE_CATALOG: string[] = (() => {
     addMotorola(set)
     addNokia(set)
     addHonorZteAsus(set)
-    // Ensure size ≥ 1000 by padding with generic entries if needed
-    const required = 1000
-    if (set.size < required) {
-        let i = 1
-        while (set.size < required) {
-            pushUnique(set, `Generic Phone Model ${i++}`)
-        }
-    }
+    // Only return real model strings; no synthetic padding
     return Array.from(set).sort()
 })()
 

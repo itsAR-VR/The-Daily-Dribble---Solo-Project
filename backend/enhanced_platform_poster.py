@@ -1057,8 +1057,41 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
         """Navigate to a working Add Offer form. Returns True if the model input is present."""
         driver = self.driver
         wait = WebDriverWait(driver, 20)
+        # First try explicit destinations that commonly redirect to the company offers UI
+        try:
+            driver.get("https://www.gsmexchange.com/en/trading/my-offers")
+            time.sleep(2)
+            self._dismiss_gsmx_popups()
+            for by, sel in [
+                (By.NAME, "phModelFull"),
+                (By.CSS_SELECTOR, "form[data-component*='trading/add'] input[name='phModelFull']"),
+                (By.CSS_SELECTOR, ".twitter-typeahead input.tt-query"),
+            ]:
+                try:
+                    wait.until(EC.presence_of_element_located((by, sel)))
+                    self._capture_step("gsmx_offer_form", "Offer form ready at /en/trading/my-offers (company redirect)")
+                    return True
+                except Exception:
+                    continue
+            # If not found, look for a direct link to /en/company/*/offers in the nav and follow it
+            try:
+                link = driver.find_element(By.CSS_SELECTOR, "a[href*='/en/company/'][href$='/offers']")
+                href = link.get_attribute("href")
+                if href:
+                    driver.get(href)
+                    time.sleep(2)
+                    self._dismiss_gsmx_popups()
+                    wait.until(EC.presence_of_element_located((By.NAME, "phModelFull")))
+                    self._capture_step("gsmx_offer_form", f"Offer form ready at {href}")
+                    return True
+            except Exception:
+                pass
+        except Exception:
+            pass
+
         candidates = [
             "https://www.gsmexchange.com/en/phones",
+            "https://www.gsmexchange.com/en/phones?tab=offers",
             "https://www.gsmexchange.com/en/phones/add",
             "https://www.gsmexchange.com/en/trading/add-offer",
             "https://www.gsmexchange.com/trading/add-offer",
@@ -1069,8 +1102,19 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 driver.get(url)
                 time.sleep(2)
                 self._dismiss_gsmx_popups()
+                # On generic pages, try to find a link to the company offers page as well
+                try:
+                    link = driver.find_element(By.CSS_SELECTOR, "a[href*='/en/company/'][href$='/offers']")
+                    href = link.get_attribute("href")
+                    if href:
+                        driver.get(href)
+                        time.sleep(2)
+                        self._dismiss_gsmx_popups()
+                except Exception:
+                    pass
                 for by, sel in [
                     (By.NAME, "phModelFull"),
+                    (By.CSS_SELECTOR, "form[data-component*='trading/add'] input[name='phModelFull']"),
                     (By.CSS_SELECTOR, "input[data-component='trading/phoneAutocompleter']"),
                     (By.CSS_SELECTOR, ".twitter-typeahead input.tt-query"),
                 ]:
@@ -1243,10 +1287,20 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 if not self._open_offer_form():
                     return "Error: Could not open GSM Exchange Add Offer form"
 
-            # Pick SELL if radio is present
+            # Pick SELL if radio is present (id=typeSell or name=isOffer value=1)
             try:
-                sell_radio = driver.find_element(By.CSS_SELECTOR, "input[value='sell']")
-                if sell_radio.is_displayed():
+                sell_radio = None
+                for by, sel in [
+                    (By.CSS_SELECTOR, "#typeSell"),
+                    (By.CSS_SELECTOR, "input[name='isOffer'][value='1']"),
+                    (By.XPATH, "//label[contains(.,'I want to sell')]/preceding::input[1]")
+                ]:
+                    try:
+                        sell_radio = driver.find_element(by, sel)
+                        break
+                    except Exception:
+                        continue
+                if sell_radio and sell_radio.is_displayed():
                     driver.execute_script("arguments[0].click();", sell_radio)
                     self._capture_step("gsmx_sell", "Selected I want to sell")
             except Exception:
@@ -1270,7 +1324,15 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                             continue
                     if not model_input:
                         raise TimeoutException("model input not found")
-                    picked = _try_pick_typeahead(model_input, product_name)
+                    # If brand exists, prepend for better matching of typeahead entries
+                    try:
+                        brand = str(row.get("brand", "")).strip()
+                    except Exception:
+                        brand = ""
+                    query = product_name
+                    if brand and not product_name.lower().startswith(brand.lower() + " "):
+                        query = f"{brand} {product_name}".strip()
+                    picked = _try_pick_typeahead(model_input, query)
                     self._capture_step("gsmx_model", f"Model set: {product_name}{' (picked)' if picked else ''}")
                 except Exception:
                     pass
