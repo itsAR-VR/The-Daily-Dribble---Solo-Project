@@ -914,7 +914,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 except Exception:
                     continue
 
-            # Final state – capture debug and treat as timeout/failure
+            # Final state – capture debug and treat as timeout/failure (with tab crash recovery)
             try:
                 dbg = driver.execute_script(
                     "return {url: location.href, title: document.title, hasForm: !!document.querySelector('form'), body: (document.body && document.body.innerText) ? document.body.innerText.slice(0,800) : ''}"
@@ -922,6 +922,21 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             except Exception:
                 dbg = None
             self._capture_step("gsmx_login_timeout", f"Login timeout{(' | ' + str(dbg)) if dbg else ''}")
+            # Attempt a single tab crash recovery: open a clean tab, try /en/phones once
+            try:
+                driver.switch_to.new_window('tab')
+                driver.get("https://www.gsmexchange.com/en/phones")
+                time.sleep(2)
+                self._dismiss_gsmx_popups()
+                if self._check_login_success():
+                    self._capture_step("gsmx_recovered", "Recovered from timeout via new tab on /en/phones")
+                    try:
+                        self._save_cookies("session")
+                    except Exception:
+                        pass
+                    return True
+            except Exception:
+                pass
             return False
         except TimeoutException:
             try:

@@ -778,6 +778,21 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                 if platform in ["cellpex", "gsmexchange"]:
                     from selenium import webdriver
                     options = webdriver.ChromeOptions()
+                    # Anti-detection and stability flags
+                    options.add_argument("--disable-blink-features=AutomationControlled")
+                    options.add_argument("--disable-infobars")
+                    options.add_argument("--disable-dev-shm-usage")
+                    options.add_argument("--no-sandbox")
+                    options.add_argument("--disable-gpu")
+                    options.add_argument("--window-size=1366,824")
+                    options.add_argument("--lang=en-US,en;q=0.9")
+                    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                    experimental = {"excludeSwitches": ["enable-automation"], "useAutomationExtension": False}
+                    try:
+                        options.add_experimental_option("excludeSwitches", experimental["excludeSwitches"]) 
+                        options.add_experimental_option("useAutomationExtension", experimental["useAutomationExtension"]) 
+                    except Exception:
+                        pass
                     remote_url = os.environ.get("SELENIUM_REMOTE_URL")
                     if remote_url:
                         driver = webdriver.Remote(command_executor=remote_url, options=options)
