@@ -143,6 +143,28 @@ export default function ListingBotUI() {
   const [gmailStatus, setGmailStatus] = useState<"unknown" | "authenticated" | "requires_auth" | "not_configured">("unknown")
   const [gmailRefreshToken, setGmailRefreshToken] = useState<string>("")
 
+  // Global debug hooks to surface silent errors
+  useEffect(() => {
+    const onErr = (e: ErrorEvent) => {
+      // Avoid crashing UI on unexpected errors
+      // eslint-disable-next-line no-console
+      console.error("Global error captured:", e?.error || e?.message, e)
+    }
+    const onRej = (e: PromiseRejectionEvent) => {
+      // eslint-disable-next-line no-console
+      console.error("Unhandled promise rejection:", e?.reason)
+    }
+    window.addEventListener("error", onErr)
+    window.addEventListener("unhandledrejection", onRej)
+    // Initial heartbeat
+    // eslint-disable-next-line no-console
+    console.info("🟢 Listing UI mounted and ready")
+    return () => {
+      window.removeEventListener("error", onErr)
+      window.removeEventListener("unhandledrejection", onRej)
+    }
+  }, [])
+
   useEffect(() => {
     const saved = localStorage.getItem("productSuggestions")
     if (saved) {
@@ -325,11 +347,19 @@ export default function ListingBotUI() {
 
     setIsProcessing(true)
 
+    const debugRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    // eslint-disable-next-line no-console
+    console.group(`🚀 Submit run ${debugRunId}`)
+    // eslint-disable-next-line no-console
+    console.log("Items count:", items.length)
+
     for (const item of items) {
       if (item.selectedPlatforms.length === 0) continue
 
       // Process platforms in parallel
       const platformPromises = item.selectedPlatforms.map(async (platformId) => {
+        // eslint-disable-next-line no-console
+        console.group(`▶️ Start ${platformId} for item ${item.productName || item.id}`)
         updateItem(item.id, {
           platformStatuses: {
             ...item.platformStatuses,
@@ -338,70 +368,97 @@ export default function ListingBotUI() {
         })
 
         try {
+          const payload = {
+            platform: platformId,
+            listing_data: {
+              // Send all the comprehensive data
+              product_type: item.productType,
+              // Hint backend about Cellpex section mapping
+              section: item.productType === "accessory" ? "2" : (item.productType === "gadget" ? "G" : "1"),
+              category: item.category,
+              brand: item.brand,
+              product_name: item.productName,
+              model_code: item.modelCode,
+              condition: item.condition === "other" ? item.customCondition : item.condition,
+              condition_grade: item.conditionGrade,
+              lcd_defects: item.lcdDefects,
+              quality_certification: item.qualityCertification,
+              memory: item.memory,
+              color: item.color,
+              market_spec: item.marketSpec,
+              sim_lock_status: item.simLockStatus,
+              carrier: item.carrier,
+              price: item.price,
+              currency: item.currency,
+              quantity: item.quantity,
+              minimum_order_quantity: item.minimumOrderQuantity,
+              supply_ability: item.supplyAbility,
+              packaging: item.packaging,
+              item_weight: item.itemWeight,
+              weight_unit: item.weightUnit,
+              incoterm: item.incoterm,
+              allow_local_pickup: item.allowLocalPickup,
+              delivery_days: item.deliveryDays,
+              country: item.country,
+              state: item.state,
+              description: item.description,
+              keywords: item.keywords,
+              accepted_payments: item.acceptedPayments,
+              auto_share_linkedin: item.autoShareLinkedIn,
+              auto_share_twitter: item.autoShareTwitter,
+              private_notes: item.privateNotes,
+              manufacturer_type: item.manufacturerType
+            }
+          }
+
+          // eslint-disable-next-line no-console
+          console.debug("↗️ Request:", { platformId, payload: { ...payload, listing_data: { ...payload.listing_data, description: (payload.listing_data.description || "").slice(0, 80) + "…", keywords_len: payload.listing_data.keywords?.length } } })
+
           const response = await fetch(`${API_BASE_URL}/listings/enhanced-visual`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              platform: platformId,
-              listing_data: {
-                // Send all the comprehensive data
-                product_type: item.productType,
-                // Hint backend about Cellpex section mapping
-                section: item.productType === "accessory" ? "2" : (item.productType === "gadget" ? "G" : "1"),
-                category: item.category,
-                brand: item.brand,
-                product_name: item.productName,
-                model_code: item.modelCode,
-                condition: item.condition === "other" ? item.customCondition : item.condition,
-                condition_grade: item.conditionGrade,
-                lcd_defects: item.lcdDefects,
-                quality_certification: item.qualityCertification,
-                memory: item.memory,
-                color: item.color,
-                market_spec: item.marketSpec,
-                sim_lock_status: item.simLockStatus,
-                carrier: item.carrier,
-                price: item.price,
-                currency: item.currency,
-                quantity: item.quantity,
-                minimum_order_quantity: item.minimumOrderQuantity,
-                supply_ability: item.supplyAbility,
-                packaging: item.packaging,
-                item_weight: item.itemWeight,
-                weight_unit: item.weightUnit,
-                incoterm: item.incoterm,
-                allow_local_pickup: item.allowLocalPickup,
-                delivery_days: item.deliveryDays,
-                country: item.country,
-                state: item.state,
-                description: item.description,
-                keywords: item.keywords,
-                accepted_payments: item.acceptedPayments,
-                auto_share_linkedin: item.autoShareLinkedIn,
-                auto_share_twitter: item.autoShareTwitter,
-                private_notes: item.privateNotes,
-                manufacturer_type: item.manufacturerType
-              }
-            }),
+            body: JSON.stringify(payload),
           })
 
-          const result = await response.json()
+          const raw = await response.text()
+          let result: any
+          try {
+            result = raw ? JSON.parse(raw) : {}
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error("❌ Failed to parse JSON response", { status: response.status, raw: raw?.slice(0, 2000) })
+            throw e
+          }
+
+          // eslint-disable-next-line no-console
+          console.debug("↙️ Response:", { status: response.status, ok: response.ok, keys: Object.keys(result || {}) })
 
           // Log browser automation steps for visualization
           if (result.browser_steps) {
+            // eslint-disable-next-line no-console
             console.group(`🌐 Browser Automation: ${platformId}`)
-            result.browser_steps.forEach((step: any) => {
+            ;(Array.isArray(result.browser_steps) ? result.browser_steps : [result.browser_steps]).forEach((step: any, idx: number) => {
               const emoji = step.status === 'success' ? '✅' : 
                            step.status === 'error' ? '❌' : 
                            step.status === 'action_required' ? '⚠️' : '⏳'
-              console.log(`${emoji} ${step.message}`)
+              // eslint-disable-next-line no-console
+              console.log(`${emoji} ${step.message || '(no message)'} [${idx}]`)
               if (step.requires_2fa) {
+                // eslint-disable-next-line no-console
                 console.log('🔐 2FA Required - Checking email for verification code...')
               }
               if (step.fields_filled) {
-                console.table(step.fields_filled)
+                try {
+                  const tableData = step.fields_filled && typeof step.fields_filled === 'object' ? step.fields_filled : { value: step.fields_filled }
+                  // eslint-disable-next-line no-console
+                  console.table(tableData as any)
+                } catch (err) {
+                  // eslint-disable-next-line no-console
+                  console.warn('⚠️ console.table failed for fields_filled', err)
+                }
               }
             })
+            // eslint-disable-next-line no-console
             console.groupEnd()
           }
 
@@ -414,7 +471,11 @@ export default function ListingBotUI() {
               },
             },
           })
+          // eslint-disable-next-line no-console
+          console.groupEnd()
         } catch (error) {
+          // eslint-disable-next-line no-console
+          console.error(`❌ ${platformId} failed`, error)
           updateItem(item.id, {
             platformStatuses: {
               ...item.platformStatuses,
@@ -424,15 +485,21 @@ export default function ListingBotUI() {
               },
             },
           })
+          // eslint-disable-next-line no-console
+          console.groupEnd()
         }
       })
 
       // Wait for all platforms to complete for this item
       await Promise.all(platformPromises)
+      // eslint-disable-next-line no-console
       console.log(`✨ All platforms processed for ${item.productName}`)
     }
 
     setIsProcessing(false)
+    // eslint-disable-next-line no-console
+    console.groupEnd()
+    // eslint-disable-next-line no-console
     console.log('🎯 All items and platforms processed!')
   }
 
