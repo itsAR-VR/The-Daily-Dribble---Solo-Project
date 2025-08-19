@@ -174,7 +174,7 @@ export default function ListingBotUI() {
     if (saved) {
       setProductSuggestions(JSON.parse(saved))
     }
-    // Hydrate phone catalog from a reputable public dataset (Android certified devices) when available
+    // Hydrate phone catalog from public datasets (Android certified devices) when available
     ;(async () => {
       try {
         // Prefer V2 cache with structured entries
@@ -206,31 +206,91 @@ export default function ListingBotUI() {
             }
           } catch {}
         }
-        const ANDROID_URL = "https://raw.githubusercontent.com/androidtrackers/certified-android-devices/master/devices.json"
-        const res = await fetch(ANDROID_URL, { cache: "no-store" })
-        if (res.ok) {
-          const json = await res.json()
-          if (Array.isArray(json)) {
-            const entries: PhoneEntry[] = []
-            const seen = new Set<string>()
-            for (let i = 0; i < json.length; i++) {
-              const item = json[i] as any
-              const brand = (item?.brand || item?.Brand || "").toString().trim()
-              const name = (item?.name || item?.Name || "").toString().trim()
-              if (!brand || !name) continue
-              const label = `${brand} ${name}`.replace(/\s+/g, " ").trim()
-              const key = `${brand.toLowerCase()}|${name.toLowerCase()}`
-              if (label.length >= 3 && !seen.has(key)) {
-                seen.add(key)
-                entries.push({ brand, model: name, label })
+        const CATALOG_SOURCES = [
+          // Gist with certified Android devices (fallback mirror)
+          "https://gist.githubusercontent.com/noamtamim/9ecee1ead83e6a9541d4c194a88f8e89/raw/devices.json",
+          // Historical androidtrackers path (may 404, kept as secondary)
+          "https://raw.githubusercontent.com/androidtrackers/certified-android-devices/master/devices.json"
+        ] as const
+
+        const parseCatalog = async (res: Response): Promise<PhoneEntry[] | null> => {
+          try {
+            const text = await res.text()
+            // Try JSON first
+            try {
+              const json = JSON.parse(text)
+              const entries: PhoneEntry[] = []
+              const seen = new Set<string>()
+              if (Array.isArray(json)) {
+                for (let i = 0; i < json.length; i++) {
+                  const item = json[i] as any
+                  const brand = (item?.brand || item?.Brand || item?.manufacturer || "").toString().trim()
+                  const name = (item?.name || item?.Name || item?.model || "").toString().trim()
+                  if (!brand || !name) continue
+                  const label = `${brand} ${name}`.replace(/\s+/g, " ").trim()
+                  const key = `${brand.toLowerCase()}|${name.toLowerCase()}`
+                  if (label.length >= 3 && !seen.has(key)) {
+                    seen.add(key)
+                    entries.push({ brand, model: name, label })
+                  }
+                }
+              } else if (json && typeof json === "object") {
+                // Some datasets map brand -> [models]
+                for (const [brandKey, arr] of Object.entries(json as Record<string, any>)) {
+                  if (!Array.isArray(arr)) continue
+                  const brand = (brandKey || "").toString().trim()
+                  for (const model of arr) {
+                    const name = (model || "").toString().trim()
+                    if (!brand || !name) continue
+                    const label = `${brand} ${name}`.replace(/\s+/g, " ").trim()
+                    const key = `${brand.toLowerCase()}|${name.toLowerCase()}`
+                    if (label.length >= 3 && !seen.has(key)) {
+                      seen.add(key)
+                      entries.push({ brand, model: name, label })
+                    }
+                  }
+                }
               }
-              if (entries.length >= 5000) break
-            }
-            if (entries.length >= 500) {
+              if (entries.length) return entries
+            } catch {}
+            // Try CSV as a secondary parse path
+            try {
+              const lines = text.split(/\r?\n/).filter(Boolean)
+              if (lines.length > 5) {
+                const entries: PhoneEntry[] = []
+                const seen = new Set<string>()
+                for (const line of lines.slice(1)) {
+                  const cols = line.split(",")
+                  const brand = (cols[0] || "").trim()
+                  const name = (cols[1] || "").trim()
+                  if (!brand || !name) continue
+                  const label = `${brand} ${name}`
+                  const key = `${brand.toLowerCase()}|${name.toLowerCase()}`
+                  if (!seen.has(key)) {
+                    seen.add(key)
+                    entries.push({ brand, model: name, label })
+                  }
+                }
+                if (entries.length) return entries
+              }
+            } catch {}
+            return null
+          } catch { return null }
+        }
+
+        for (const url of CATALOG_SOURCES) {
+          try {
+            const res = await fetch(url, { cache: "no-store" })
+            if (!res.ok) continue
+            const entries = await parseCatalog(res)
+            if (entries && entries.length >= 500) {
               entries.sort((a, b) => a.label.localeCompare(b.label))
               setPhoneCatalog(entries)
               localStorage.setItem("phoneCatalogCacheV2", JSON.stringify({ ts: Date.now(), data: entries }))
+              break
             }
+          } catch {
+            // try next source
           }
         }
       } catch {
@@ -492,11 +552,26 @@ export default function ListingBotUI() {
           // eslint-disable-next-line no-console
           console.debug("↗️ Request:", { platformId, payload: { ...payload, listing_data: { ...payload.listing_data, description: (payload.listing_data.description || "").slice(0, 80) + "…", keywords_len: payload.listing_data.keywords?.length } } })
 
-          const response = await fetch(`${API_BASE_URL}/listings/enhanced-visual`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          })
+          const doRequest = async () => {
+            return await fetch(`${API_BASE_URL}/listings/enhanced-visual`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            })
+          }
+          // Retry with exponential backoff for transient network errors
+          let response: Response | null = null
+          let lastErr: any = null
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              response = await doRequest()
+              break
+            } catch (e) {
+              lastErr = e
+              await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt)))
+            }
+          }
+          if (!response) throw lastErr || new Error("Network error")
 
           const raw = await response.text()
           let result: any
