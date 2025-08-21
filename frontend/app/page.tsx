@@ -278,6 +278,7 @@ export default function ListingBotUI() {
           } catch { return null }
         }
 
+        let hydrated = false
         for (const url of CATALOG_SOURCES) {
           try {
             const res = await fetch(url, { cache: "no-store" })
@@ -287,11 +288,23 @@ export default function ListingBotUI() {
               entries.sort((a, b) => a.label.localeCompare(b.label))
               setPhoneCatalog(entries)
               localStorage.setItem("phoneCatalogCacheV2", JSON.stringify({ ts: Date.now(), data: entries }))
+              hydrated = true
               break
             }
           } catch {
             // try next source
           }
+        }
+        if (!hydrated) {
+          // Final fallback to bundled list to ensure autocomplete works
+          const fallback: PhoneEntry[] = (PHONE_CATALOG as unknown as string[]).map((label) => {
+            const parts = (label || "").trim().split(/\s+/)
+            const brand = parts.shift() || ""
+            const model = parts.join(" ")
+            return { brand, model, label }
+          })
+          setPhoneCatalog(fallback)
+          localStorage.setItem("phoneCatalogCacheV2", JSON.stringify({ ts: Date.now(), data: fallback }))
         }
       } catch {
         // Ignore network errors; rely on bundled PHONE_CATALOG

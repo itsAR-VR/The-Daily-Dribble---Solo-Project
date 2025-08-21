@@ -1064,6 +1064,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             self._dismiss_gsmx_popups()
             for by, sel in [
                 (By.NAME, "phModelFull"),
+                (By.CSS_SELECTOR, "form[action*='/offers'] input[name='phModelFull']"),
                 (By.CSS_SELECTOR, "form[data-component*='trading/add'] input[name='phModelFull']"),
                 (By.CSS_SELECTOR, ".twitter-typeahead input.tt-query"),
             ]:
@@ -1075,15 +1076,27 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                     continue
             # If not found, look for a direct link to /en/company/*/offers in the nav and follow it
             try:
-                link = driver.find_element(By.CSS_SELECTOR, "a[href*='/en/company/'][href$='/offers']")
-                href = link.get_attribute("href")
-                if href:
-                    driver.get(href)
-                    time.sleep(2)
-                    self._dismiss_gsmx_popups()
-                    wait.until(EC.presence_of_element_located((By.NAME, "phModelFull")))
-                    self._capture_step("gsmx_offer_form", f"Offer form ready at {href}")
-                    return True
+                link = None
+                for sel in [
+                    "a[href*='/en/company/'][href$='/offers']",
+                    "a[href*='/en/company/'][href*='/offers']",
+                    "a[href*='/offers']",
+                ]:
+                    try:
+                        link = driver.find_element(By.CSS_SELECTOR, sel)
+                        if link:
+                            break
+                    except Exception:
+                        continue
+                if link:
+                    href = link.get_attribute("href")
+                    if href:
+                        driver.get(href)
+                        time.sleep(2)
+                        self._dismiss_gsmx_popups()
+                        wait.until(EC.presence_of_element_located((By.NAME, "phModelFull")))
+                        self._capture_step("gsmx_offer_form", f"Offer form ready at {href}")
+                        return True
             except Exception:
                 pass
         except Exception:
@@ -1104,16 +1117,29 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 self._dismiss_gsmx_popups()
                 # On generic pages, try to find a link to the company offers page as well
                 try:
-                    link = driver.find_element(By.CSS_SELECTOR, "a[href*='/en/company/'][href$='/offers']")
-                    href = link.get_attribute("href")
-                    if href:
-                        driver.get(href)
-                        time.sleep(2)
-                        self._dismiss_gsmx_popups()
+                    link = None
+                    for sel in [
+                        "a[href*='/en/company/'][href$='/offers']",
+                        "a[href*='/en/company/'][href*='/offers']",
+                        "a[href*='/offers']",
+                    ]:
+                        try:
+                            link = driver.find_element(By.CSS_SELECTOR, sel)
+                            if link:
+                                break
+                        except Exception:
+                            continue
+                    if link:
+                        href = link.get_attribute("href")
+                        if href:
+                            driver.get(href)
+                            time.sleep(2)
+                            self._dismiss_gsmx_popups()
                 except Exception:
                     pass
                 for by, sel in [
                     (By.NAME, "phModelFull"),
+                    (By.CSS_SELECTOR, "form[action*='/offers'] input[name='phModelFull']"),
                     (By.CSS_SELECTOR, "form[data-component*='trading/add'] input[name='phModelFull']"),
                     (By.CSS_SELECTOR, "input[data-component='trading/phoneAutocompleter']"),
                     (By.CSS_SELECTOR, ".twitter-typeahead input.tt-query"),
