@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Plus, Minus, X, Check, Loader2, AlertCircle, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -146,6 +146,16 @@ export default function ListingBotUI() {
   const [activeSuggestItemId, setActiveSuggestItemId] = useState<string | null>(null)
   const [gmailStatus, setGmailStatus] = useState<"unknown" | "authenticated" | "requires_auth" | "not_configured">("unknown")
   const [gmailRefreshToken, setGmailRefreshToken] = useState<string>("")
+  const lastWarmupRef = useRef<number>(0)
+
+  const warmupServer = async () => {
+    try {
+      const now = Date.now()
+      if (now - (lastWarmupRef.current || 0) < 30000) return
+      await fetch(`${API_BASE_URL}/`, { method: "GET", cache: "no-store" })
+      lastWarmupRef.current = now
+    } catch {}
+  }
 
   // Global debug hooks to surface silent errors
   useEffect(() => {
@@ -568,21 +578,26 @@ export default function ListingBotUI() {
           const doRequest = async () => {
             return await fetch(`${API_BASE_URL}/listings/enhanced-visual`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", "Accept": "application/json" },
+              cache: "no-store",
+              referrerPolicy: "no-referrer",
               body: JSON.stringify(payload),
             })
           }
           // Retry with exponential backoff for transient network errors
           let response: Response | null = null
           let lastErr: any = null
-          for (let attempt = 0; attempt < 3; attempt++) {
+          await warmupServer()
+          for (let attempt = 0; attempt < 5; attempt++) {
             try {
               response = await doRequest()
-              break
+              if (response.ok) break
+              lastErr = new Error(`HTTP ${response.status}`)
             } catch (e) {
               lastErr = e
-              await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt)))
             }
+            await new Promise(r => setTimeout(r, 400 * (attempt + 1)))
+            if (attempt === 0 || attempt === 2) await warmupServer()
           }
           if (!response) throw lastErr || new Error("Network error")
 
