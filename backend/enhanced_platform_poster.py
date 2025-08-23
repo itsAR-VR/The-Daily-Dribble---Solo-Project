@@ -104,8 +104,8 @@ class Enhanced2FAMarketplacePoster:
             if sleep_ms > 0:
                 time.sleep(sleep_ms / 1000.0)
             self._last_action_ts = time.time()
-            except Exception:
-                pass
+        except Exception:
+            pass
     
     def _load_credentials(self) -> tuple[str, str]:
         """Load platform credentials from environment variables"""
@@ -1382,7 +1382,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             except Exception:
                 form_present = False
             if not form_present:
-            driver.get("https://www.gsmexchange.com/gsm/post_offers.html")
+                driver.get("https://www.gsmexchange.com/gsm/post_offers.html")
                 time.sleep(2)
                 self._dismiss_gsmx_popups()
                 self._capture_step("gsmx_legacy", "Opened legacy post offers page")
@@ -2221,7 +2221,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         pass
                 if ok:
                     picked_label = requested_cat or ("(auto)" if section_mode in ('accessories','gadgets') else ("Cell Packs" if 'pack' in (requested_cat.lower() if requested_cat else '') else "Cell Phones"))
-                print("✅ Category selected")
+                    print("✅ Category selected")
                     self._capture_step("category_selected", f"Category selected: {picked_label}")
                 else:
                     print("⚠️  Category not selected (no matching option)")
@@ -2339,20 +2339,20 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             # Price (try multiple common selectors) — normalize to integer respecting field maxlength
             try:
                 raw_price = row.get("price", "")
-                    price_selectors = [
-                        (By.NAME, "txtPrice"),
-                        (By.NAME, "txtAsk"),
-                        (By.NAME, "txtAmount"),
-                        (By.CSS_SELECTOR, "input[name*='price' i]"),
-                    ]
-                    price_field = None
-                    for by, sel in price_selectors:
-                        try:
-                            price_field = driver.find_element(by, sel)
-                            break
-                        except Exception:
-                            continue
-                    if price_field:
+                price_selectors = [
+                    (By.NAME, "txtPrice"),
+                    (By.NAME, "txtAsk"),
+                    (By.NAME, "txtAmount"),
+                    (By.CSS_SELECTOR, "input[name*='price' i]"),
+                ]
+                price_field = None
+                for by, sel in price_selectors:
+                    try:
+                        price_field = driver.find_element(by, sel)
+                        break
+                    except Exception:
+                        continue
+                if price_field:
                     try:
                         mx = price_field.get_attribute('maxlength')
                         max_len = int(mx) if (mx and str(mx).isdigit()) else 6
@@ -2365,7 +2365,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         digits = "".join(ch for ch in str(raw_price) if ch.isdigit())
                     if max_len > 0:
                         digits = digits[:max_len]
-                        price_field.clear()
+                    price_field.clear()
                     price_field.send_keys(digits)
                     print(f"✅ Price entered (normalized): {digits}")
                     self._capture_step("price_entered", f"Price: {digits}")
@@ -2385,7 +2385,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                 if currency_select:
                     ok = False
                     try:
-                    Select(currency_select).select_by_visible_text(currency)
+                        Select(currency_select).select_by_visible_text(currency)
                         ok = True
                     except Exception:
                         candidates = [currency]
@@ -2397,8 +2397,8 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                             candidates += ["British Pound", "GBP £", "£", "Pound"]
                         ok = self._select_relaxed(currency_select, candidates)
                     if ok:
-                    print(f"✅ Currency selected: {currency}")
-                    self._capture_step("currency_selected", f"Currency: {currency}")
+                        print(f"✅ Currency selected: {currency}")
+                        self._capture_step("currency_selected", f"Currency: {currency}")
             except Exception as e:
                 print(f"⚠️  Could not select currency: {e}")
 
@@ -2423,15 +2423,15 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         except Exception:
                             pass
                 else:
-                cond_select = None
-                for name in ["selCondition", "selCond", "condition"]:
-                    try:
+                    cond_select = None
+                    for name in ["selCondition", "selCond", "condition"]:
+                        try:
                             el = driver.find_element(By.NAME, name)
                             if el.tag_name.lower() == 'select':
                                 cond_select = el
-                        break
-                    except Exception:
-                        continue
+                                break
+                        except Exception:
+                            continue
                 if cond_select:
                     ok = False
                     try:
@@ -2445,40 +2445,40 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                             ok = True
                         except Exception:
                             pass
-                        if ok:
-                    print(f"✅ Condition selected: {condition}")
-                    self._capture_step("condition_selected", f"Condition: {condition}")
+                    if ok:
+                        print(f"✅ Condition selected: {condition}")
+                        self._capture_step("condition_selected", f"Condition: {condition}")
             except Exception as e:
                 print(f"⚠️  Could not select condition: {e}")
 
             # Brand/Model description (txtBrandModel) with autocomplete selection (Phones & Tablets only)
             if section_mode == 'phones_tablets':
-            try:
-                human_product = str(row.get('product_name') or '').strip()
+                try:
+                    human_product = str(row.get('product_name') or '').strip()
                     brand_val = str(row.get('brand', '')).strip()
                     fallback_model = f"{brand_val or 'Apple'} {row.get('model', 'iPhone 14 Pro')}".strip()
                     if human_product and brand_val and brand_val.lower() not in human_product.lower():
                         product_name = f"{brand_val} {human_product}".strip()
                     else:
-                product_name = human_product or fallback_model
-                model_field = None
-                for locator in [
-                    (By.NAME, "txtBrandModel"),
-                    (By.ID, "txtBrandModel"),
-                    (By.CSS_SELECTOR, "input[name*='BrandModel' i]")
-                ]:
-                    try:
-                        model_field = driver.find_element(*locator)
-                        break
-                    except Exception:
-                        continue
-                if model_field:
-                    model_field.clear()
-                    model_field.click()
-                    for chunk in product_name.split(" "):
-                        model_field.send_keys(chunk + " ")
-                        time.sleep(0.3)
-                    time.sleep(1.5)
+                        product_name = human_product or fallback_model
+                    model_field = None
+                    for locator in [
+                        (By.NAME, "txtBrandModel"),
+                        (By.ID, "txtBrandModel"),
+                        (By.CSS_SELECTOR, "input[name*='BrandModel' i]")
+                    ]:
+                        try:
+                            model_field = driver.find_element(*locator)
+                            break
+                        except Exception:
+                            continue
+                    if model_field:
+                        model_field.clear()
+                        model_field.click()
+                        for chunk in product_name.split(" "):
+                            model_field.send_keys(chunk + " ")
+                            time.sleep(0.3)
+                        time.sleep(1.5)
                         picked = self._try_pick_autocomplete(model_field, wait, product_name)
                         if not picked:
                             try:
@@ -2489,8 +2489,8 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                                         val = (hf.get_attribute('value') or '').strip()
                                         if name and val and any(tok in name for tok in ['modelid','brandid','itemid','hdnmodel','hdnbrand']):
                                             hidden_ok = True
-                        except Exception:
-                            continue
+                                    except Exception:
+                                        continue
                                 if not hidden_ok:
                                     model_field.send_keys("\ue015")
                                     time.sleep(0.1)
@@ -2498,39 +2498,39 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                                     picked = True
                             except Exception:
                                 pass
-                    if not picked:
-                        driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input')); arguments[0].dispatchEvent(new Event('change')); arguments[0].blur();", model_field, product_name)
-                    print(f"✅ Product name set: {product_name} {'(picked suggestion)' if picked else '(direct)'}")
-                    self._capture_step("product_name_set", f"Product name: {product_name}")
-                    try:
-                        hidden_fields = driver.find_elements(By.CSS_SELECTOR, "input[type='hidden']")
-                        hidden_summary = []
-                        for hf in hidden_fields:
-                            try:
-                                name = hf.get_attribute('name') or hf.get_attribute('id')
-                                val = (hf.get_attribute('value') or '')[:40]
-                                if name and val:
-                                    hidden_summary.append(f"{name}={val}")
-                            except Exception:
-                                continue
-                        if hidden_summary:
-                            self._capture_step("hidden_fields", ", ".join(hidden_summary[:8]))
-                    except Exception:
-                        pass
-                else:
-                    driver.execute_script("""
-                            var field = document.querySelector('[name=\"txtBrandModel\"]');
-                        if (field) {
-                            field.value = arguments[0];
-                                field.dispatchEvent(new Event('input'));
-                            field.dispatchEvent(new Event('change'));
-                                field.blur();
-                        }
-                    """, product_name)
-                    print(f"✅ Product name set via JavaScript: {product_name}")
-                    self._capture_step("product_name_set", f"Product name: {product_name}")
-            except Exception as e:
-                print(f"⚠️  Skipping product name due to: {e}")
+                        if not picked:
+                            driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input')); arguments[0].dispatchEvent(new Event('change')); arguments[0].blur();", model_field, product_name)
+                        print(f"✅ Product name set: {product_name} {'(picked suggestion)' if picked else '(direct)'}")
+                        self._capture_step("product_name_set", f"Product name: {product_name}")
+                        try:
+                            hidden_fields = driver.find_elements(By.CSS_SELECTOR, "input[type='hidden']")
+                            hidden_summary = []
+                            for hf in hidden_fields:
+                                try:
+                                    name = hf.get_attribute('name') or hf.get_attribute('id')
+                                    val = (hf.get_attribute('value') or '')[:40]
+                                    if name and val:
+                                        hidden_summary.append(f"{name}={val}")
+                                except Exception:
+                                    continue
+                            if hidden_summary:
+                                self._capture_step("hidden_fields", ", ".join(hidden_summary[:8]))
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+            else:
+                driver.execute_script("""
+                        var field = document.querySelector('[name=\"txtBrandModel\"]');
+                    if (field) {
+                        field.value = arguments[0];
+                            field.dispatchEvent(new Event('input'));
+                        field.dispatchEvent(new Event('change'));
+                            field.blur();
+                    }
+                """, product_name)
+                print(f"✅ Product name set via JavaScript: {product_name}")
+                self._capture_step("product_name_set", f"Product name: {product_name}")
             
             # Description: Phones use areaComments; Gadgets/Accessories use areaDesc
             try:
@@ -3427,7 +3427,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
                         try:
                             driver.refresh(); time.sleep(2)
                             if scan_tables_for_match():
-                            return True
+                                return True
                         except Exception:
                             pass
                 except Exception:
