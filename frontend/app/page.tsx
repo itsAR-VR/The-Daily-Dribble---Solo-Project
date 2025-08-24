@@ -337,9 +337,23 @@ export default function ListingBotUI() {
     // Load Gmail auth status on mount
     ;(async () => {
       try {
-        const res = await fetch(`/api/gmail/status`)
-        const data = await res.json()
-        if (data?.status) setGmailStatus(data.status)
+        const res = await fetch(`/api/gmail/status`, { cache: "no-store" })
+        if (!res.ok) {
+          setGmailStatus("not_configured")
+          return
+        }
+        const data = await res.json().catch(() => ({}))
+        // Derive status from multiple possible shapes
+        const raw = (data?.status || data?.state || data?.auth_status || "").toString().toLowerCase()
+        const boolAuth = [data?.authenticated, data?.isAuthenticated, data?.auth].some((v: any) => v === true || v === "true")
+        const derived: typeof gmailStatus = raw === "authenticated" || raw === "ok" || boolAuth
+          ? "authenticated"
+          : raw === "requires_auth" || raw === "needs_auth" || raw === "reauth"
+          ? "requires_auth"
+          : "not_configured"
+        setGmailStatus(derived)
+        // eslint-disable-next-line no-console
+        console.debug("Gmail status payload:", data, "→", derived)
       } catch {
         setGmailStatus("not_configured")
       }
