@@ -16,7 +16,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useDropzone } from "react-dropzone"
 import PHONE_CATALOG from "../data/phoneCatalog"
 
-const API_BASE_URL = "https://listing-bot-api-production.up.railway.app"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://listing-bot-api-production.up.railway.app"
+const PROXY_BASE = "/api" // Next.js API proxy
 
 // Comprehensive options for all fields
 const CATEGORIES = {
@@ -152,6 +153,8 @@ export default function ListingBotUI() {
     try {
       const now = Date.now()
       if (now - (lastWarmupRef.current || 0) < 30000) return
+      // Warm both upstream and the proxy route
+      await fetch(`${PROXY_BASE}/listings/enhanced-visual`, { method: "GET", cache: "no-store" })
       await fetch(`${API_BASE_URL}/`, { method: "GET", cache: "no-store" })
       lastWarmupRef.current = now
     } catch {}
@@ -576,7 +579,8 @@ export default function ListingBotUI() {
           console.debug("↗️ Request:", { platformId, payload: { ...payload, listing_data: { ...payload.listing_data, description: (payload.listing_data.description || "").slice(0, 80) + "…", keywords_len: payload.listing_data.keywords?.length } } })
 
           const doRequest = async () => {
-            return await fetch(`${API_BASE_URL}/listings/enhanced-visual`, {
+            // Hit proxy to avoid browser HTTP/2 issues
+            return await fetch(`${PROXY_BASE}/listings/enhanced-visual`, {
               method: "POST",
               headers: { "Content-Type": "application/json", "Accept": "application/json" },
               cache: "no-store",
