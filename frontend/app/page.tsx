@@ -627,38 +627,20 @@ export default function ListingBotUI() {
               body: JSON.stringify(payload),
             })
           }
-          const doUpstream = async () => {
-            return await fetch(`${API_BASE_URL}/listings/enhanced-visual`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "Accept": "application/json" },
-              cache: "no-store",
-              referrerPolicy: "no-referrer",
-              body: JSON.stringify(payload),
-            })
-          }
+          // Remove direct upstream call from the browser to avoid CORS; rely on proxy retries
           // Retry with exponential backoff for transient network errors
           let response: Response | null = null
           let lastErr: any = null
           await warmupServer()
           for (let attempt = 0; attempt < 5; attempt++) {
             try {
-              // Prefer proxy; if 502/504 or network error, fallback once to upstream
+              // Prefer proxy; it handles retries and server-side CORS
               response = await doProxy()
-              if (!response.ok && (response.status === 502 || response.status === 504)) {
-                response = await doUpstream()
-              }
               if (response.ok) break
               lastErr = new Error(`HTTP ${response.status}`)
             } catch (e) {
               lastErr = e
-              // Network-level failure calling proxy — immediately try upstream once per attempt
-              try {
-                response = await doUpstream()
-                if (response.ok) break
-                lastErr = new Error(`HTTP ${response.status}`)
-              } catch (e2) {
-                lastErr = e2
-              }
+              // Network-level failure calling proxy — keep lastErr and let retry loop continue
             }
             await new Promise(r => setTimeout(r, 400 * (attempt + 1)))
             if (attempt === 0 || attempt === 2) await warmupServer()
