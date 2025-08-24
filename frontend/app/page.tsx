@@ -219,12 +219,11 @@ export default function ListingBotUI() {
             }
           } catch {}
         }
-        const CATALOG_SOURCES = [
-          // Gist with certified Android devices (fallback mirror)
+        const ENABLE_REMOTE_CATALOG = (process.env.NEXT_PUBLIC_ENABLE_REMOTE_CATALOG || "false").toString().toLowerCase() === "true"
+        const CATALOG_SOURCES = ENABLE_REMOTE_CATALOG ? ([
           "https://gist.githubusercontent.com/noamtamim/9ecee1ead83e6a9541d4c194a88f8e89/raw/devices.json",
-          // Historical androidtrackers path (may 404, kept as secondary)
           "https://raw.githubusercontent.com/androidtrackers/certified-android-devices/master/devices.json"
-        ] as const
+        ] as const) : ([] as const)
 
         const parseCatalog = async (res: Response): Promise<PhoneEntry[] | null> => {
           try {
@@ -625,6 +624,14 @@ export default function ListingBotUI() {
               lastErr = new Error(`HTTP ${response.status}`)
             } catch (e) {
               lastErr = e
+              // Network-level failure calling proxy — immediately try upstream once per attempt
+              try {
+                response = await doUpstream()
+                if (response.ok) break
+                lastErr = new Error(`HTTP ${response.status}`)
+              } catch (e2) {
+                lastErr = e2
+              }
             }
             await new Promise(r => setTimeout(r, 400 * (attempt + 1)))
             if (attempt === 0 || attempt === 2) await warmupServer()

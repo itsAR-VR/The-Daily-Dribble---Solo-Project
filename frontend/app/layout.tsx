@@ -9,7 +9,12 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Listing Bot",
   description: "Upload and process your product listings easily.",
-    generator: 'v0.dev'
+    generator: 'v0.dev',
+    icons: {
+      icon: "/placeholder.svg",
+      shortcut: "/placeholder.svg",
+      apple: "/placeholder.svg"
+    }
 }
 
 export default function RootLayout({
