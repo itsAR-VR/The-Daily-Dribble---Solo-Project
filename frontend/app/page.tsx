@@ -337,7 +337,7 @@ export default function ListingBotUI() {
     // Load Gmail auth status on mount
     ;(async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/gmail/status`)
+        const res = await fetch(`/api/gmail/status`)
         const data = await res.json()
         if (data?.status) setGmailStatus(data.status)
       } catch {
@@ -349,7 +349,7 @@ export default function ListingBotUI() {
   const startGmailOAuth = async () => {
     try {
       // Ask backend to redirect directly (avoids popup blockers and JSON parsing issues)
-      window.location.href = `${API_BASE_URL}/gmail/auth?redirect=true`
+      window.location.href = `/api/gmail/auth?redirect=true`
     } catch (e) {
       console.error("Failed to start Gmail OAuth", e)
     }
@@ -357,7 +357,7 @@ export default function ListingBotUI() {
 
   const fetchGmailRefreshToken = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/gmail/refresh-token`)
+      const res = await fetch(`/api/gmail/refresh-token`)
       const data = await res.json()
       if (data?.refresh_token) setGmailRefreshToken(data.refresh_token)
       // Also refresh status
