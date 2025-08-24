@@ -333,28 +333,55 @@ export default function ListingBotUI() {
       }
     })()
     // Persist suggestions across sessions
-    // Load Gmail auth status on mount
+    // Load Gmail auth status on mount (proxy → upstream fallback) and cache last-known good
     ;(async () => {
+      const derive = (obj: any): typeof gmailStatus => {
+        const raw = (obj?.status || obj?.state || obj?.auth_status || "").toString().toLowerCase()
+        const boolAuth = [obj?.authenticated, obj?.isAuthenticated, obj?.auth].some((v: any) => v === true || v === "true")
+        if (raw === "authenticated" || raw === "ok" || boolAuth) return "authenticated"
+        if (["requires_auth","needs_auth","reauth"].includes(raw)) return "requires_auth"
+        return "not_configured"
+      }
+      const setAndCache = (s: typeof gmailStatus) => {
+        setGmailStatus(s)
+        try { localStorage.setItem("gmailStatusLastKnown", s) } catch {}
+      }
       try {
-        const res = await fetch(`/api/gmail/status`, { cache: "no-store" })
-        if (!res.ok) {
-          setGmailStatus("not_configured")
-          return
+        let statusResp: typeof gmailStatus | null = null
+        // 1) Try proxy
+        try {
+          const r = await fetch(`/api/gmail/status`, { cache: "no-store" })
+          if (r.ok) {
+            const d = await r.json().catch(()=>({}))
+            statusResp = derive(d)
+          }
+        } catch {}
+        // 2) Fallback to upstream directly if proxy failed or unclear
+        if (!statusResp || statusResp === "not_configured") {
+          try {
+            const r2 = await fetch(`${API_BASE_URL}/gmail/status`, { cache: "no-store" })
+            if (r2.ok) {
+              const d2 = await r2.json().catch(()=>({}))
+              const d2s = derive(d2)
+              // Prefer an authenticated signal from upstream over proxy uncertainty
+              if (d2s !== "not_configured") statusResp = d2s
+            }
+          } catch {}
         }
-        const data = await res.json().catch(() => ({}))
-        // Derive status from multiple possible shapes
-        const raw = (data?.status || data?.state || data?.auth_status || "").toString().toLowerCase()
-        const boolAuth = [data?.authenticated, data?.isAuthenticated, data?.auth].some((v: any) => v === true || v === "true")
-        const derived: typeof gmailStatus = raw === "authenticated" || raw === "ok" || boolAuth
-          ? "authenticated"
-          : raw === "requires_auth" || raw === "needs_auth" || raw === "reauth"
-          ? "requires_auth"
-          : "not_configured"
-        setGmailStatus(derived)
-        // eslint-disable-next-line no-console
-        console.debug("Gmail status payload:", data, "→", derived)
+        // 3) Last-known-good as final fallback
+        if (!statusResp || statusResp === "not_configured") {
+          try {
+            const last = localStorage.getItem("gmailStatusLastKnown") as typeof gmailStatus | null
+            if (last && last === "authenticated") statusResp = last
+          } catch {}
+        }
+        setAndCache(statusResp || "not_configured")
       } catch {
-        setGmailStatus("not_configured")
+        // Last fallback
+        try {
+          const last = localStorage.getItem("gmailStatusLastKnown") as typeof gmailStatus | null
+          setGmailStatus(last || "not_configured")
+        } catch { setGmailStatus("not_configured") }
       }
     })()
   }, [])
