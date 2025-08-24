@@ -153,8 +153,8 @@ export default function ListingBotUI() {
     try {
       const now = Date.now()
       if (now - (lastWarmupRef.current || 0) < 30000) return
-      // Warm both upstream and the proxy route
-      await fetch(`${PROXY_BASE}/listings/enhanced-visual`, { method: "GET", cache: "no-store" })
+      // Warm proxy and backend via explicit ping
+      await fetch(`/api/ping`, { method: "GET", cache: "no-store" })
       await fetch(`${API_BASE_URL}/`, { method: "GET", cache: "no-store" })
       lastWarmupRef.current = now
     } catch {}
@@ -578,9 +578,17 @@ export default function ListingBotUI() {
           // eslint-disable-next-line no-console
           console.debug("↗️ Request:", { platformId, payload: { ...payload, listing_data: { ...payload.listing_data, description: (payload.listing_data.description || "").slice(0, 80) + "…", keywords_len: payload.listing_data.keywords?.length } } })
 
-          const doRequest = async () => {
-            // Hit proxy to avoid browser HTTP/2 issues
+          const doProxy = async () => {
             return await fetch(`${PROXY_BASE}/listings/enhanced-visual`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Accept": "application/json" },
+              cache: "no-store",
+              referrerPolicy: "no-referrer",
+              body: JSON.stringify(payload),
+            })
+          }
+          const doUpstream = async () => {
+            return await fetch(`${API_BASE_URL}/listings/enhanced-visual`, {
               method: "POST",
               headers: { "Content-Type": "application/json", "Accept": "application/json" },
               cache: "no-store",
@@ -594,7 +602,11 @@ export default function ListingBotUI() {
           await warmupServer()
           for (let attempt = 0; attempt < 5; attempt++) {
             try {
-              response = await doRequest()
+              // Prefer proxy; if 502/504 or network error, fallback once to upstream
+              response = await doProxy()
+              if (!response.ok && (response.status === 502 || response.status === 504)) {
+                response = await doUpstream()
+              }
               if (response.ok) break
               lastErr = new Error(`HTTP ${response.status}`)
             } catch (e) {
