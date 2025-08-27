@@ -120,6 +120,9 @@ os.makedirs(JOBS_DIR, exist_ok=True)
 # Job status tracking
 jobs = {}
 
+# Visual enhanced listing jobs (async fire-and-poll)
+vis_jobs: Dict[str, Dict[str, Any]] = {}
+
 
 class SingleListingRequest(BaseModel):
     platform: str
@@ -961,6 +964,44 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                 "screenshot": None
             }]
         }
+
+
+@app.post("/listings/enhanced-visual/start")
+async def start_enhanced_visual_job(request: EnhancedListingRequest):
+    """Start a background visual listing job and return a job_id immediately."""
+    job_id = str(uuid.uuid4())
+    vis_jobs[job_id] = {
+        "status": "queued",
+        "created_at": datetime.now().isoformat(),
+        "result": None,
+        "error": None,
+    }
+
+    def _run_job():
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(create_enhanced_listing_with_visual(request))
+            vis_jobs[job_id]["status"] = "completed"
+            vis_jobs[job_id]["result"] = result
+            vis_jobs[job_id]["completed_at"] = datetime.now().isoformat()
+        except Exception as e:
+            vis_jobs[job_id]["status"] = "failed"
+            vis_jobs[job_id]["error"] = str(e)
+            vis_jobs[job_id]["completed_at"] = datetime.now().isoformat()
+
+    import threading
+    threading.Thread(target=_run_job, daemon=True).start()
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.get("/listings/enhanced-visual/status/{job_id}")
+async def get_enhanced_visual_status(job_id: str):
+    job = vis_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
 
 
 def map_to_platform_fields(platform: str, data: ComprehensiveListingData) -> Dict[str, Any]:

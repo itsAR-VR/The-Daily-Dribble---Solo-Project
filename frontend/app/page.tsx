@@ -627,6 +627,16 @@ export default function ListingBotUI() {
               body: JSON.stringify(payload),
             })
           }
+          const startProxyJob = async () => {
+            const r = await fetch(`${PROXY_BASE}/listings/enhanced-visual`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json", "Accept": "application/json" },
+              cache: "no-store",
+              referrerPolicy: "no-referrer",
+              body: JSON.stringify(payload),
+            })
+            return r
+          }
           const doUpstream = async () => {
             return await fetch(`${API_BASE_URL}/listings/enhanced-visual`, {
               method: "POST",
@@ -638,7 +648,7 @@ export default function ListingBotUI() {
               mode: "cors",
             })
           }
-          // Retry with exponential backoff for transient network errors
+          // Retry with exponential backoff; use async job fallback when direct calls flap
           let response: Response | null = null
           let lastErr: any = null
           await warmupServer()
@@ -665,7 +675,34 @@ export default function ListingBotUI() {
             await new Promise(r => setTimeout(r, 400 * (attempt + 1)))
             if (attempt === 0 || attempt === 2) await warmupServer()
           }
-          if (!response) throw lastErr || new Error("Network error")
+          // If still no good response, attempt async job start via proxy and poll upstream status
+          if (!response || !response.ok) {
+            try {
+              const start = await startProxyJob()
+              const startJson = await start.json().catch(()=>({}))
+              const jobId = startJson?.job_id
+              if (start.ok && jobId) {
+                // Poll upstream status via browser (CORS ok for JSON GET if server allows *)
+                for (let i = 0; i < 30; i++) {
+                  await new Promise(r => setTimeout(r, 2000))
+                  try {
+                    const s = await fetch(`${API_BASE_URL}/listings/enhanced-visual/status/${jobId}`, { cache: "no-store" })
+                    if (!s.ok) continue
+                    const sj = await s.json().catch(()=>({}))
+                    if (sj?.status === "completed" && sj?.result) {
+                      response = new Response(JSON.stringify(sj.result), { status: 200, headers: { "Content-Type": "application/json" } })
+                      break
+                    }
+                    if (sj?.status === "failed") {
+                      response = new Response(JSON.stringify({ success: false, message: sj?.error || "Job failed" }), { status: 500, headers: { "Content-Type": "application/json" } })
+                      break
+                    }
+                  } catch {}
+                }
+              }
+            } catch {}
+          }
+          if (!response || !response.ok) throw lastErr || new Error("Network error")
 
           const raw = await response.text()
           let result: any

@@ -54,4 +54,28 @@ export async function POST(req: NextRequest) {
     }
 }
 
+// Fire-and-poll endpoints
+export async function PUT(req: NextRequest) {
+    // Start background job upstream
+    const body = await req.text()
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 60000)
+    try {
+        const res = await fetch(`${API_BASE_URL}/listings/enhanced-visual/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Accept": "application/json" },
+            cache: "no-store",
+            body,
+            signal: controller.signal,
+        })
+        const text = await res.text()
+        const contentType = res.headers.get("content-type") || "application/json"
+        return new Response(text, { status: res.status, headers: { "Content-Type": contentType } })
+    } catch (e: any) {
+        return new Response(JSON.stringify({ ok: false, message: e?.message || "start failed" }), { status: 502, headers: { "Content-Type": "application/json" } })
+    } finally {
+        clearTimeout(timeout)
+    }
+}
+
 
