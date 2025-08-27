@@ -648,61 +648,110 @@ export default function ListingBotUI() {
               mode: "cors",
             })
           }
-          // Retry with exponential backoff; use async job fallback when direct calls flap
+          // For GSM Exchange and other complex platforms, use async job approach to avoid timeouts
           let response: Response | null = null
           let lastErr: any = null
-          await warmupServer()
-          for (let attempt = 0; attempt < 5; attempt++) {
+          
+          // Try sync approach first (faster for simple platforms)
+          if (platformId !== "gsmexchange") {
+            await warmupServer()
             try {
-              // Prefer calling upstream first to avoid Vercel function time limits
-              response = await doUpstream()
+              response = await doProxy()
               if (!response.ok && (response.status === 502 || response.status === 504)) {
-                response = await doProxy()
+                // Proxy timed out, try direct
+                response = await doUpstream()
               }
-              if (response.ok) break
-              lastErr = new Error(`HTTP ${response.status}`)
             } catch (e) {
-              lastErr = e
-              // Network-level failure — try proxy once, then continue retry loop
+              // Network error, try the other endpoint
               try {
-                response = await doProxy()
-                if (response.ok) break
-                lastErr = new Error(`HTTP ${response.status}`)
+                response = await doUpstream()
               } catch (e2) {
                 lastErr = e2
               }
             }
-            await new Promise(r => setTimeout(r, 400 * (attempt + 1)))
-            if (attempt === 0 || attempt === 2) await warmupServer()
           }
-          // If still no good response, attempt async job start via proxy and poll upstream status
-          if (!response || !response.ok) {
+          
+          // If sync failed or platform is GSM Exchange, use async job
+          if (!response || !response.ok || platformId === "gsmexchange") {
             try {
               const start = await startProxyJob()
               const startJson = await start.json().catch(()=>({}))
               const jobId = startJson?.job_id
+              
               if (start.ok && jobId) {
-                // Poll upstream status via browser (CORS ok for JSON GET if server allows *)
-                for (let i = 0; i < 30; i++) {
-                  await new Promise(r => setTimeout(r, 2000))
+                // Show progress to user
+                updateItem(item.id, {
+                  selectedPlatforms: {
+                    ...item.selectedPlatforms,
+                    [platformId]: {
+                      ...(item.selectedPlatforms[platformId] || {}),
+                      status: 'processing',
+                      message: 'Job started, processing...'
+                    }
+                  }
+                })
+                
+                // Poll for status (up to 3 minutes)
+                for (let i = 0; i < 60; i++) {
+                  await new Promise(r => setTimeout(r, 3000))
                   try {
-                    const s = await fetch(`${API_BASE_URL}/listings/enhanced-visual/status/${jobId}`, { cache: "no-store" })
+                    const s = await fetch(`${PROXY_BASE}/listings/enhanced-visual/status/${jobId}`, { cache: "no-store" })
                     if (!s.ok) continue
                     const sj = await s.json().catch(()=>({}))
+                    
                     if (sj?.status === "completed" && sj?.result) {
-                      response = new Response(JSON.stringify(sj.result), { status: 200, headers: { "Content-Type": "application/json" } })
+                      response = new Response(JSON.stringify(sj.result), { 
+                        status: 200, 
+                        headers: { "Content-Type": "application/json" } 
+                      })
                       break
                     }
+                    
                     if (sj?.status === "failed") {
-                      response = new Response(JSON.stringify({ success: false, message: sj?.error || "Job failed" }), { status: 500, headers: { "Content-Type": "application/json" } })
+                      response = new Response(JSON.stringify({ 
+                        success: false, 
+                        message: sj?.error || "Job failed",
+                        browser_steps: sj?.result?.browser_steps
+                      }), { 
+                        status: 500, 
+                        headers: { "Content-Type": "application/json" } 
+                      })
                       break
+                    }
+                    
+                    // Update progress message
+                    if (i % 5 === 0) {
+                      updateItem(item.id, {
+                        selectedPlatforms: {
+                          ...item.selectedPlatforms,
+                          [platformId]: {
+                            ...(item.selectedPlatforms[platformId] || {}),
+                            message: `Processing... (${Math.round(i/60 * 100)}%)`
+                          }
+                        }
+                      })
                     }
                   } catch {}
                 }
+                
+                if (!response) {
+                  response = new Response(JSON.stringify({ 
+                    success: false, 
+                    message: "Job timed out after 3 minutes. The listing may still be processing." 
+                  }), { 
+                    status: 504, 
+                    headers: { "Content-Type": "application/json" } 
+                  })
+                }
+              } else {
+                throw new Error(startJson?.message || "Failed to start job")
               }
-            } catch {}
+            } catch (e: any) {
+              throw e
+            }
           }
-          if (!response || !response.ok) throw lastErr || new Error("Network error")
+          
+          if (!response) throw lastErr || new Error("Network error")
 
           const raw = await response.text()
           let result: any

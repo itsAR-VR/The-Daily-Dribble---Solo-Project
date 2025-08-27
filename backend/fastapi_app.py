@@ -975,6 +975,8 @@ async def start_enhanced_visual_job(request: EnhancedListingRequest):
         "created_at": datetime.now().isoformat(),
         "result": None,
         "error": None,
+        "platform": request.platform,
+        "product": request.listing_data.product_name
     }
 
     def _run_job():

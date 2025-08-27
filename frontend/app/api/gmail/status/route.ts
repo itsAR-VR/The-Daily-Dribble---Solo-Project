@@ -14,8 +14,8 @@ export async function GET() {
             const status = raw === "authenticated" || raw === "ok" || boolAuth
                 ? "authenticated"
                 : raw === "requires_auth" || raw === "needs_auth" || raw === "reauth"
-                ? "requires_auth"
-                : "not_configured"
+                    ? "requires_auth"
+                    : "not_configured"
             return new Response(JSON.stringify({ status }), { status: 200, headers: { "Content-Type": "application/json" } })
         }
         const text = await res.text()
