@@ -648,31 +648,27 @@ export default function ListingBotUI() {
               mode: "cors",
             })
           }
-          // For GSM Exchange and other complex platforms, use async job approach to avoid timeouts
+          // Prefer fast synchronous path first for all platforms (including GSM Exchange)
           let response: Response | null = null
           let lastErr: any = null
           
-          // Try sync approach first (faster for simple platforms)
-          if (platformId !== "gsmexchange") {
-            await warmupServer()
+          // Try sync approach first (proxy then upstream)
+          await warmupServer()
+          try {
+            response = await doProxy()
+            if (!response.ok && (response.status === 502 || response.status === 504)) {
+              response = await doUpstream()
+            }
+          } catch (e) {
             try {
-              response = await doProxy()
-              if (!response.ok && (response.status === 502 || response.status === 504)) {
-                // Proxy timed out, try direct
-                response = await doUpstream()
-              }
-            } catch (e) {
-              // Network error, try the other endpoint
-              try {
-                response = await doUpstream()
-              } catch (e2) {
-                lastErr = e2
-              }
+              response = await doUpstream()
+            } catch (e2) {
+              lastErr = e2
             }
           }
           
-          // If sync failed or platform is GSM Exchange, use async job
-          if (!response || !response.ok || platformId === "gsmexchange") {
+          // If sync failed, fall back to async job
+          if (!response || !response.ok) {
             try {
               const start = await startProxyJob()
               const startJson = await start.json().catch(()=>({}))

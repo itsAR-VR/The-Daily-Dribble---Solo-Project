@@ -1053,6 +1053,438 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
         except Exception:
             pass
 
+    # ---- Fast sidebar-driven posting (mirrors Cellpex speed) ----
+    def _select_relaxed_text(self, select_el, candidates: list[str]) -> bool:
+        """Select an option from <select> using relaxed matching (exact, contains, startswith)."""
+        try:
+            dd = Select(select_el)
+            opts = dd.options
+            texts = [(o.text or '').strip() for o in opts]
+            lowers = [t.lower() for t in texts]
+            # exact (case-insensitive)
+            for c in candidates:
+                if not c:
+                    continue
+                c2 = str(c).strip()
+                if c2.lower() in lowers:
+                    dd.select_by_index(lowers.index(c2.lower()))
+                    return True
+            # contains
+            for c in candidates:
+                if not c:
+                    continue
+                cl = str(c).strip().lower()
+                for i, t in enumerate(lowers):
+                    if cl and cl in t:
+                        dd.select_by_index(i)
+                        return True
+            # startswith
+            for c in candidates:
+                if not c:
+                    continue
+                cl = str(c).strip().lower()
+                for i, t in enumerate(lowers):
+                    if cl and t.startswith(cl):
+                        dd.select_by_index(i)
+                        return True
+        except Exception:
+            pass
+        return False
+
+    def _sidebar_and_form(self, action_contains: str, timeout: int = 10):
+        """Find `.s-sidebar` and inside it a form whose action contains the substring."""
+        driver = self.driver
+        try:
+            sb = WebDriverWait(driver, timeout).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".s-sidebar")))
+        except Exception:
+            try:
+                sb = driver.find_element(By.CSS_SELECTOR, ".s-sidebar")
+            except Exception:
+                return None, None
+        try:
+            frm = sb.find_element(By.CSS_SELECTOR, f"form[action*='{action_contains}']")
+            return sb, frm
+        except Exception:
+            return sb, None
+
+    def _navigate_section(self, section: str) -> tuple:
+        """Navigate to a GSMX section and return (sidebar, form) if found quickly."""
+        driver = self.driver
+        self._dismiss_gsmx_popups()
+        candidates = []
+        if section == 'phones':
+            candidates = [
+                "https://www.gsmexchange.com/en/phones?tab=offers",
+                "https://www.gsmexchange.com/en/phones",
+                "https://www.gsmexchange.com/en/trading/add-offer",
+                "https://www.gsmexchange.com/gsm/post_offers.html",
+            ]
+            action_hint = "/offers"
+        elif section == 'accessories':
+            candidates = [
+                "https://www.gsmexchange.com/en/phones?tab=accessories",
+                "https://www.gsmexchange.com/en/accessories"
+            ]
+            action_hint = "/accessories"
+        elif section == 'used':
+            candidates = [
+                "https://www.gsmexchange.com/en/phones?tab=used",
+                "https://www.gsmexchange.com/en/refurbished",
+                "https://www.gsmexchange.com/en/phones?tab=refurbished",
+            ]
+            action_hint = "/refurbished"
+        else:  # consumer
+            candidates = ["https://www.gsmexchange.com/en/consumer"]
+            action_hint = "/consumer"
+
+        for url in candidates:
+            try:
+                driver.get(url)
+                time.sleep(1.2)
+                self._dismiss_gsmx_popups()
+                sb, frm = self._sidebar_and_form(action_hint)
+                if sb and frm:
+                    self._capture_step(f"gsmx_{section}_form_found", f"Found form at {url}")
+                    return sb, frm
+            except Exception:
+                continue
+        return None, None
+
+    def _post_sidebar_phones(self, sb, row) -> str | None:
+        driver = self.driver
+        try:
+            # Ensure Sell selected
+            try:
+                sell = sb.find_element(By.CSS_SELECTOR, "#typeSell")
+                driver.execute_script("arguments[0].click();", sell)
+            except Exception:
+                pass
+
+            # Model autocompleter
+            model = str(row.get("product_name") or row.get("model") or row.get("model_code") or "").strip()
+            brand = str(row.get("brand") or "").strip()
+            query = f"{brand} {model}".strip() or model or brand
+            try:
+                inp = sb.find_element(By.CSS_SELECTOR, "input[name='phModelFull']")
+                inp.clear()
+                for chunk in (query or "").split(" "):
+                    inp.send_keys(chunk + " ")
+                    time.sleep(0.15)
+                time.sleep(0.7)
+                # Try pick first suggestion via keys
+                inp.send_keys("\ue015")  # ArrowDown
+                time.sleep(0.05)
+                inp.send_keys("\ue007")  # Enter
+            except Exception:
+                pass
+
+            # Quantity
+            try:
+                qty_val = str(row.get("quantity", "1"))
+                qty = sb.find_element(By.CSS_SELECTOR, "#f-at-qty, input[name='phQty']")
+                qty.clear(); qty.send_keys(qty_val)
+            except Exception:
+                pass
+
+            # Currency
+            try:
+                currency = (str(row.get("currency", "USD")).upper())
+                cur = sb.find_element(By.CSS_SELECTOR, "#f-at-currency, select[name='phCurrency']")
+                ok = False
+                try:
+                    Select(cur).select_by_visible_text(currency)
+                    ok = True
+                except Exception:
+                    ok = self._select_relaxed_text(cur, [currency, "USD", "US Dollar", "$", "EUR", "GBP"])
+                if ok:
+                    self._capture_step("gsmx_currency_set", currency)
+            except Exception:
+                pass
+
+            # Price
+            try:
+                price_val = str(row.get("price", ""))
+                pr = sb.find_element(By.CSS_SELECTOR, "#f-at-price, input[name='phPrice']")
+                pr.clear(); pr.send_keys(price_val)
+            except Exception:
+                pass
+
+            # Condition
+            try:
+                cond_map = {
+                    "new": "New",
+                    "used": "Used and tested",
+                    "refurbished": "Refurbished",
+                    "asis": "ASIS",
+                    "7 day / 14 day": "7 day / 14 day",
+                    "cpo": "CPO",
+                    "pre order": "Pre order",
+                }
+                cond_in = str(row.get("condition", "New")).strip().lower()
+                desired = cond_map.get(cond_in, row.get("condition", "New"))
+                sel = sb.find_element(By.CSS_SELECTOR, "#f-at-condition, select[name='phCondition']")
+                try:
+                    Select(sel).select_by_visible_text(desired)
+                except Exception:
+                    self._select_relaxed_text(sel, [desired])
+            except Exception:
+                pass
+
+            # Spec
+            try:
+                spec_map = {
+                    "US": "US spec.", "USA": "US spec.", "Euro": "Euro spec.", "EU": "Euro spec.",
+                    "UK": "UK spec.", "Asia": "Asia spec.", "Arabic": "Arab spec.", "Other": "Other spec.",
+                    "India": "Indian spec.", "African": "African spec.", "Latin": "Latin spec.",
+                    "Japan": "Japanese spec.", "China": "China spec.", "Australia": "Australia spec.",
+                    "Canada": "Canada Spec.", "Global": "Global Spec."
+                }
+                raw = str(row.get("market_spec", row.get("market", "US")))
+                desired = spec_map.get(raw, spec_map.get(raw.upper(), "Global Spec."))
+                sel = sb.find_element(By.CSS_SELECTOR, "#f-at-spec, select[name='phSpec']")
+                try:
+                    Select(sel).select_by_visible_text(desired)
+                except Exception:
+                    self._select_relaxed_text(sel, [desired])
+            except Exception:
+                pass
+
+            # Comments
+            try:
+                txt = sb.find_element(By.CSS_SELECTOR, "#comments, textarea[name='phComments']")
+                comments = row.get("description") or ""
+                if not comments:
+                    comments = f"Condition: {row.get('condition','')} | Memory: {row.get('memory','')} | Color: {row.get('color','')}"
+                txt.clear(); txt.send_keys(str(comments)[:1000])
+            except Exception:
+                pass
+
+            # Confirm stock
+            try:
+                cb = sb.find_element(By.CSS_SELECTOR, "#f-at-confirm, input[name='confirm']")
+                if not cb.is_selected():
+                    driver.execute_script("arguments[0].click();", cb)
+            except Exception:
+                pass
+
+            # Submit
+            try:
+                btn = None
+                for sel in [
+                    "button.primary.c-tOR-item[type='submit']",
+                    "button[type='submit'].primary",
+                    "input[type='submit']",
+                ]:
+                    try:
+                        btn = sb.find_element(By.CSS_SELECTOR, sel)
+                        break
+                    except Exception:
+                        continue
+                if btn:
+                    driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", btn)
+                    time.sleep(0.2)
+                    driver.execute_script("arguments[0].click();", btn)
+                    self._capture_step("gsmx_submit", "Clicked New offer (fast)")
+            except Exception:
+                pass
+
+            time.sleep(4)
+            # Verify
+            if self._verify_gsmx_listing(row):
+                return "Success: GSM Exchange offer posted (fast)"
+            page = (driver.page_source or '').lower()
+            if any(k in page for k in ["offer created", "new offer", "offer posted", "successfully"]):
+                return "Success: GSM Exchange offer posted"
+            return "Pending: Submitted offer; waiting for confirmation"
+        except Exception:
+            return None
+
+    def _post_sidebar_accessories(self, sb, row) -> str | None:
+        driver = self.driver
+        try:
+            # Sell radio
+            try:
+                sell = sb.find_element(By.CSS_SELECTOR, "#typeSell")
+                driver.execute_script("arguments[0].click();", sell)
+            except Exception:
+                pass
+            # Brand select
+            try:
+                brand = str(row.get("brand", "Apple"))
+                sel = sb.find_element(By.CSS_SELECTOR, "select[name='phBrand']")
+                ok = False
+                try:
+                    Select(sel).select_by_visible_text(brand)
+                    ok = True
+                except Exception:
+                    ok = self._select_relaxed_text(sel, [brand])
+                if not ok:
+                    try:
+                        Select(sel).select_by_index(1)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            # Original checkbox
+            try:
+                if bool(row.get("original", True)):
+                    cb = sb.find_element(By.CSS_SELECTOR, "#atOriginal, input[name='atOriginal']")
+                    if not cb.is_selected():
+                        driver.execute_script("arguments[0].click();", cb)
+            except Exception:
+                pass
+            # Accessory type
+            try:
+                acc_type = str(row.get("accessory_type") or row.get("category") or "Other accessories")
+                sel = sb.find_element(By.CSS_SELECTOR, "select[name='atType']")
+                if not self._select_relaxed_text(sel, [acc_type]):
+                    try:
+                        Select(sel).select_by_index(1)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            # Submit
+            try:
+                btn = sb.find_element(By.CSS_SELECTOR, "button.primary.c-tOR-item[type='submit'], input[type='submit']")
+                driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", btn)
+                time.sleep(0.1)
+                driver.execute_script("arguments[0].click();", btn)
+            except Exception:
+                pass
+            time.sleep(2)
+            return "Pending: Accessories offer submitted"
+        except Exception:
+            return None
+
+    def _post_sidebar_used(self, sb, row) -> str | None:
+        driver = self.driver
+        try:
+            # Subcategory radio
+            try:
+                cond = str(row.get("condition", "Used")).lower()
+                radio_id = "noticeSubcategoryRefurbished" if "refurb" in cond else "noticeSubcategoryUsed"
+                r = sb.find_element(By.CSS_SELECTOR, f"#{radio_id}")
+                driver.execute_script("arguments[0].click();", r)
+            except Exception:
+                pass
+            # Brand select
+            try:
+                brand = str(row.get("brand", "Apple"))
+                sel = sb.find_element(By.CSS_SELECTOR, "select[name='phBrand']")
+                if not self._select_relaxed_text(sel, [brand]):
+                    try:
+                        Select(sel).select_by_index(1)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            # Submit
+            try:
+                btn = sb.find_element(By.CSS_SELECTOR, "button.primary.c-tOR-item[type='submit'], input[type='submit']")
+                driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", btn)
+                time.sleep(0.1)
+                driver.execute_script("arguments[0].click();", btn)
+            except Exception:
+                pass
+            time.sleep(2)
+            return "Pending: Used/Refurbished offer submitted"
+        except Exception:
+            return None
+
+    def _post_sidebar_consumer(self, sb, row) -> str | None:
+        driver = self.driver
+        try:
+            # Category
+            try:
+                cat = str(row.get("category") or "General Product (Other)")
+                sel = sb.find_element(By.CSS_SELECTOR, "#ctCategory, select[name='ctCategory']")
+                if not self._select_relaxed_text(sel, [cat, "General", "Other"]):
+                    try:
+                        Select(sel).select_by_index(1)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            # Manufacturer and Model may be dynamically loaded; skip if empty
+            # Quantity
+            try:
+                qty_val = str(row.get("quantity", "1"))
+                q = sb.find_element(By.CSS_SELECTOR, "#f-at-qty, input[name='ctQty']")
+                q.clear(); q.send_keys(qty_val)
+            except Exception:
+                pass
+            # Currency
+            try:
+                currency = (str(row.get("currency", "USD")).upper())
+                cur = sb.find_element(By.CSS_SELECTOR, "#f-at-currency, select[name='ctCurrency']")
+                ok = False
+                try:
+                    Select(cur).select_by_visible_text(currency)
+                    ok = True
+                except Exception:
+                    ok = self._select_relaxed_text(cur, [currency, "USD", "US Dollar", "$", "EUR", "GBP"])
+                if ok:
+                    self._capture_step("gsmx_consumer_currency", currency)
+            except Exception:
+                pass
+            # Price
+            try:
+                price_val = str(row.get("price", ""))
+                p = sb.find_element(By.CSS_SELECTOR, "#f-at-price, input[name='ctPrice']")
+                p.clear(); p.send_keys(price_val)
+            except Exception:
+                pass
+            # Confirm
+            try:
+                cb = sb.find_element(By.CSS_SELECTOR, "#f-at-confirm, input[name='confirm']")
+                if not cb.is_selected():
+                    driver.execute_script("arguments[0].click();", cb)
+            except Exception:
+                pass
+            # Submit
+            try:
+                btn = sb.find_element(By.CSS_SELECTOR, "button.primary.c-tOR-item[type='submit'], input[type='submit']")
+                driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", btn)
+                time.sleep(0.1)
+                driver.execute_script("arguments[0].click();", btn)
+            except Exception:
+                pass
+            time.sleep(2)
+            return "Pending: Consumer offer submitted"
+        except Exception:
+            return None
+
+    def _post_listing_via_sidebar(self, row) -> str | None:
+        """Fast-path posting using the visible sidebar forms on known GSMX pages."""
+        # Decide section
+        section = "phones"
+        try:
+            ptype = str(row.get("product_type", "phone")).lower()
+            category = str(row.get("category", "")).lower()
+            cond = str(row.get("condition", "")).lower()
+            if "consumer" in ptype or "consumer" in category:
+                section = "consumer"
+            elif "accessor" in ptype or "gadget" in ptype or "accessor" in category or "gadget" in category:
+                section = "accessories"
+            elif any(k in cond for k in ["used", "refurb"]):
+                section = "used"
+        except Exception:
+            section = "phones"
+
+        sb, frm = self._navigate_section(section)
+        if not (sb and frm):
+            return None
+
+        # Route to section-specific filler
+        if section == 'phones':
+            return self._post_sidebar_phones(sb, row)
+        if section == 'accessories':
+            return self._post_sidebar_accessories(sb, row)
+        if section == 'used':
+            return self._post_sidebar_used(sb, row)
+        return self._post_sidebar_consumer(sb, row)
+
     def _open_offer_form(self) -> bool:
         """Navigate to a working Add Offer form. Returns True if the model input is present."""
         driver = self.driver
@@ -1335,6 +1767,13 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
     
     def post_listing(self, row):
         """Post listing on GSM Exchange (Phones > Add offer → I want to sell)."""
+        # Fast path first: try sidebar forms with minimal navigation
+        try:
+            quick = self._post_listing_via_sidebar(row)
+            if isinstance(quick, str):
+                return quick
+        except Exception:
+            pass
         driver = self.driver
         wait = WebDriverWait(driver, 20)
         

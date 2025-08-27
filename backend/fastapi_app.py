@@ -872,6 +872,9 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
                                 "incoterm": listing_data.incoterm,
                                 "accepted_payments": listing_data.accepted_payments,
                                 "description": listing_data.description,
+                                # Routing hints for GSMX sidebar fast path
+                                "product_type": listing_data.product_type,
+                                "category": listing_data.category,
                             }
                             result_msg = poster.post_listing(row_like)
                             browser_steps.extend(poster.last_steps)
