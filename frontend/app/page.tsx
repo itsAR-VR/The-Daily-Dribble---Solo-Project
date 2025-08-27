@@ -695,8 +695,13 @@ export default function ListingBotUI() {
                 for (let i = 0; i < 60; i++) {
                   await new Promise(r => setTimeout(r, 3000))
                   try {
-                    const s = await fetch(`${PROXY_BASE}/listings/enhanced-visual/status/${jobId}`, { cache: "no-store" })
-                    if (!s.ok) continue
+                    // Poll upstream directly to avoid proxy 404s on dynamic routes
+                    const s = await fetch(`${API_BASE_URL}/listings/enhanced-visual/status/${jobId}`, { cache: "no-store" })
+                    if (!s.ok) {
+                      // Treat early 404 as still-queued for a few cycles
+                      if (s.status === 404) continue
+                      continue
+                    }
                     const sj = await s.json().catch(()=>({}))
                     
                     if (sj?.status === "completed" && sj?.result) {
