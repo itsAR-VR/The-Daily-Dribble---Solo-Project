@@ -1114,14 +1114,41 @@ async def get_gmail_status():
                 "revoke_url": "/gmail/revoke"
             }
         }
-    
-    has_credentials = gmail_service.credentials is not None and gmail_service.credentials.valid
-    
+
+    # Current state
+    creds = getattr(gmail_service, "credentials", None)
+    creds_valid = bool(creds and getattr(creds, "valid", False))
+    token_file = getattr(gmail_service, "token_file", None)
+    token_on_disk = bool(token_file and os.path.exists(token_file))
+    refresh_token = None
+    try:
+        refresh_token = getattr(creds, "refresh_token", None) if creds else None
+    except Exception:
+        refresh_token = None
+
+    # If credentials not valid but token exists, try to reinitialize once
+    reinitialized = False
+    if not creds_valid and (token_on_disk or refresh_token):
+        try:
+            reinitialized = bool(gmail_service.force_reinitialize())
+        except Exception:
+            reinitialized = False
+        # Recompute after reinit
+        try:
+            creds = getattr(gmail_service, "credentials", None)
+            creds_valid = bool(creds and getattr(creds, "valid", False))
+        except Exception:
+            creds_valid = False
+
+    status = "authenticated" if creds_valid else ("requires_auth" if (token_on_disk or refresh_token) else "not_configured")
+
     return {
         "available": True,
-        "status": "authenticated" if has_credentials else "requires_auth",
-        "message": "Gmail service is properly configured with OAuth" if has_credentials else "OAuth authentication required",
-        "authenticated": has_credentials,
+        "status": status,
+        "message": "Gmail service is properly configured with OAuth" if status == "authenticated" else ("OAuth authentication required" if status == "requires_auth" else "Not configured"),
+        "authenticated": creds_valid,
+        "token_present": token_on_disk or bool(refresh_token),
+        "reinitialized": reinitialized,
         "features": [
             "2FA code retrieval",
             "Verification code extraction",
