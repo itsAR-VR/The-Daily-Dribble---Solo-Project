@@ -679,13 +679,13 @@ export default function ListingBotUI() {
               const jobId = startJson?.job_id
               
               if (start.ok && jobId) {
-                // Show progress to user
+                // Show progress to user via platformStatuses (do not mutate selectedPlatforms array)
                 updateItem(item.id, {
-                  selectedPlatforms: {
-                    ...item.selectedPlatforms,
+                  platformStatuses: {
+                    ...item.platformStatuses,
                     [platformId]: {
-                      ...(item.selectedPlatforms[platformId] || {}),
-                      status: 'processing',
+                      ...(item.platformStatuses[platformId] || {}),
+                      status: 'posting',
                       message: 'Job started, processing...'
                     }
                   }
@@ -722,10 +722,11 @@ export default function ListingBotUI() {
                     // Update progress message
                     if (i % 5 === 0) {
                       updateItem(item.id, {
-                        selectedPlatforms: {
-                          ...item.selectedPlatforms,
+                        platformStatuses: {
+                          ...item.platformStatuses,
                           [platformId]: {
-                            ...(item.selectedPlatforms[platformId] || {}),
+                            ...(item.platformStatuses[platformId] || {}),
+                            status: 'posting',
                             message: `Processing... (${Math.round(i/60 * 100)}%)`
                           }
                         }
@@ -1204,15 +1205,15 @@ export default function ListingBotUI() {
                   ].map((platform) => (
                     <div key={platform} className="flex items-center space-x-2">
                       <Checkbox
-                        checked={item.selectedPlatforms.includes(platform)}
+                        checked={Array.isArray(item.selectedPlatforms) && item.selectedPlatforms.includes(platform)}
                         onCheckedChange={(checked) => {
                           if (checked) {
                             updateItem(item.id, {
-                              selectedPlatforms: [...item.selectedPlatforms, platform],
+                              selectedPlatforms: [...(Array.isArray(item.selectedPlatforms) ? item.selectedPlatforms : []), platform],
                             })
                           } else {
                             updateItem(item.id, {
-                              selectedPlatforms: item.selectedPlatforms.filter((p) => p !== platform),
+                              selectedPlatforms: (Array.isArray(item.selectedPlatforms) ? item.selectedPlatforms : []).filter((p) => p !== platform),
                             })
                           }
                         }}
