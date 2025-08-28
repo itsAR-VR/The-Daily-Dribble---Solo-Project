@@ -145,12 +145,19 @@ class Enhanced2FAMarketplacePoster:
             pass_field.send_keys(self.password)
             self._capture_step("login_filled", "Filled username and password")
             
-            # Submit login
-            submit = driver.find_element(
-                By.CSS_SELECTOR, 
-                "button[type='submit'], input[type='submit'], button:contains('Login'), button:contains('Sign in')"
-            )
-            submit.click()
+            # Submit login (avoid invalid :contains CSS; CSS first, then XPath fallbacks)
+            try:
+                submit = driver.find_element(By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")
+                submit.click()
+            except Exception:
+                try:
+                    submit = driver.find_element(By.XPATH, "//button[@type='submit'] | //input[@type='submit'] | //button[contains(.,'Login') or contains(.,'Sign in') or contains(.,'Sign In')] | //a[contains(.,'Login') or contains(.,'Sign in') or contains(.,'Sign In')]")
+                    submit.click()
+                except Exception:
+                    try:
+                        pass_field.send_keys("\n")
+                    except Exception:
+                        pass
             self._capture_step("login_submitted", "Submitted login form")
             
             # Check for 2FA
@@ -408,27 +415,30 @@ class Enhanced2FAMarketplacePoster:
             code_field.send_keys(code)
             print(f"✅ Entered 2FA code: {code}")
             
-            # Submit code
-            submit_selectors = [
-                "button[type='submit']",
-                "input[type='submit']", 
-                "button:contains('Verify')",
-                "button:contains('Submit')",
-                "button:contains('Continue')",
-                "[onclick*='verify']",
-                "[onclick*='submit']"
-            ]
-            
+            # Submit code (CSS first, then XPath text fallbacks)
             submitted = False
-            for selector in submit_selectors:
+            for sel in ["button[type='submit']", "input[type='submit']"]:
                 try:
-                    submit = self.driver.find_element(By.CSS_SELECTOR, selector)
-                    submit.click()
+                    sub = self.driver.find_element(By.CSS_SELECTOR, sel)
+                    sub.click()
                     submitted = True
                     print("✅ Submitted 2FA code")
                     break
-                except:
+                except Exception:
                     continue
+            if not submitted:
+                for xp in [
+                    "//button[contains(.,'Verify') or contains(.,'Submit') or contains(.,'Continue')]",
+                    "//input[@type='submit']"
+                ]:
+                    try:
+                        sub = self.driver.find_element(By.XPATH, xp)
+                        sub.click()
+                        submitted = True
+                        print("✅ Submitted 2FA code")
+                        break
+                    except Exception:
+                        continue
             
             # If no submit button found, try Enter key
             if not submitted:
@@ -3928,6 +3938,61 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
     """Kadorf/Kardof poster using fast, Cellpex-like direct form fill."""
     PLATFORM = "KARDOF"
     LOGIN_URL = "https://kadorf.com/login"
+
+    def login_with_2fa(self) -> bool:
+        """Kadorf login using concrete selectors provided (#email, #password, .y-button)."""
+        driver = self.driver
+        wait = WebDriverWait(driver, 20)
+        try:
+            driver.get(self.LOGIN_URL)
+            self._capture_step("kadorf_login_page", f"Opened login page: {self.LOGIN_URL}")
+            # Fill email / password
+            try:
+                email = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#email, input[name='email']")))
+                email.clear(); email.send_keys(self.username)
+            except Exception:
+                pass
+            try:
+                pwd = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#password, input[name='password']")))
+                pwd.clear(); pwd.send_keys(self.password)
+            except Exception:
+                pass
+            self._capture_step("kadorf_login_filled", "Filled Kadorf credentials")
+            # Submit
+            submitted = False
+            for by, sel in [
+                (By.CSS_SELECTOR, "input[type='submit'].y-button"),
+                (By.CSS_SELECTOR, "input[type='submit']"),
+                (By.CSS_SELECTOR, "button[type='submit']"),
+                (By.XPATH, "//input[@type='submit' and contains(@class,'y-button')]|//input[@type='submit']|//button[@type='submit']")
+            ]:
+                try:
+                    btn = driver.find_element(by, sel)
+                    driver.execute_script("arguments[0].click();", btn)
+                    submitted = True
+                    break
+                except Exception:
+                    continue
+            if not submitted:
+                try:
+                    pwd.send_keys("\n")
+                except Exception:
+                    pass
+            self._capture_step("kadorf_login_submitted", "Submitted Kadorf login form")
+            time.sleep(2)
+            # Success if not back on login page
+            page_l = (driver.page_source or '').lower()
+            if "login" not in (driver.current_url or '').lower() and not ("/login" in (driver.current_url or '').lower()):
+                self._capture_step("kadorf_login_success", "Logged in to Kadorf")
+                return True
+            # Fallback: treat presence of account/panel words as success
+            if any(k in page_l for k in ["panel", "account", "dashboard", "inventory", "postoffer", "sell"]):
+                self._capture_step("kadorf_login_success", "Likely logged in (heuristic)")
+                return True
+            return False
+        except Exception as e:
+            self._capture_step("kadorf_login_error", f"{e}")
+            return False
 
     def _select_relaxed(self, select_el, candidates: list[str]) -> bool:
         try:
