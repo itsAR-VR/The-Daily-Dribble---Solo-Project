@@ -969,6 +969,166 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
         }
 
 
+@app.post("/listings/enhanced-fast")
+async def create_enhanced_listing_fast(request: EnhancedListingRequest):
+    """Fast, non-visual posting using platform posters without streaming or jobs.
+
+    Returns minimal JSON with message and an optional page_excerpt for quick debugging.
+    """
+    try:
+        listing_data = request.listing_data
+        platform = request.platform
+
+        valid_platforms = ["hubx", "gsmexchange", "kardof", "cellpex", "handlot"]
+        if platform not in valid_platforms:
+            raise HTTPException(status_code=400, detail=f"Invalid platform: {platform}")
+
+        # AI enrichment if fields are empty
+        if not listing_data.description:
+            listing_data.description = generate_ai_description(listing_data)
+        if not listing_data.keywords:
+            listing_data.keywords = generate_ai_keywords(listing_data)
+
+        # Prefer direct poster flow for speed (no spreadsheet roundtrip)
+        browser_excerpt = ""
+        used_poster = False
+        result_msg = None
+        success = False
+
+        # Determine Chrome availability at runtime
+        runtime_remote_url = os.environ.get("SELENIUM_REMOTE_URL")
+        chrome_bin_guess = os.environ.get("CHROME_BIN", "/usr/bin/google-chrome")
+        chrome_bin_alt = "/usr/bin/google-chrome-stable"
+        chrome_can_run = bool(runtime_remote_url) or os.path.exists(chrome_bin_guess) or os.path.exists(chrome_bin_alt)
+
+        if chrome_can_run and platform in ["cellpex", "gsmexchange"]:
+            from selenium import webdriver
+            options = webdriver.ChromeOptions()
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--window-size=1366,824")
+            driver = None
+            try:
+                if runtime_remote_url:
+                    driver = webdriver.Remote(command_executor=runtime_remote_url, options=options)
+                else:
+                    try:
+                        from multi_platform_listing_bot import create_driver
+                    except ImportError:
+                        from backend.multi_platform_listing_bot import create_driver
+                    driver = create_driver()
+
+                try:
+                    try:
+                        from enhanced_platform_poster import ENHANCED_POSTERS
+                    except Exception:
+                        from backend.enhanced_platform_poster import ENHANCED_POSTERS
+                    # Capture diagnostic steps (label, note, screenshot)
+                    diag_steps: list[dict] = []
+                    def _capture_cb(evt: Dict[str, Any]):
+                        try:
+                            diag_steps.append({
+                                "step": evt.get("label"),
+                                "status": "info",
+                                "message": evt.get("note"),
+                                "screenshot_b64": evt.get("image_base64"),
+                                "ts": evt.get("timestamp")
+                            })
+                        except Exception:
+                            pass
+
+                    poster = ENHANCED_POSTERS[platform](driver, capture_callback=_capture_cb)
+                    used_poster = True
+                    login_ok = poster.login_with_2fa()
+                    if login_ok:
+                        row_like = {
+                            "brand": listing_data.brand,
+                            "product_name": listing_data.product_name,
+                            "model": listing_data.model_code,
+                            "quantity": listing_data.quantity,
+                            "price": listing_data.price,
+                            "currency": listing_data.currency,
+                            "condition": listing_data.condition,
+                            "memory": listing_data.memory,
+                            "color": listing_data.color,
+                            "market_spec": listing_data.market_spec,
+                            "sim_lock_status": listing_data.sim_lock_status,
+                            "carrier": listing_data.carrier,
+                            "country": listing_data.country,
+                            "state": listing_data.state,
+                            "minimum_order_quantity": listing_data.minimum_order_quantity,
+                            "packaging": listing_data.packaging,
+                            "item_weight": listing_data.item_weight,
+                            "weight_unit": listing_data.weight_unit,
+                            "incoterm": listing_data.incoterm,
+                            "accepted_payments": listing_data.accepted_payments,
+                            "description": listing_data.description,
+                            "product_type": listing_data.product_type,
+                            "category": listing_data.category,
+                        }
+                        result_msg = poster.post_listing(row_like)
+                        success = bool(result_msg and str(result_msg).lower().startswith("success"))
+                finally:
+                    try:
+                        # Capture brief page excerpt and final screenshot for debugging
+                        page = driver.page_source if driver else ""
+                        if page:
+                            page_l = page if isinstance(page, str) else str(page)
+                            browser_excerpt = page_l[:1200]
+                        try:
+                            import base64
+                            png = driver.get_screenshot_as_png() if driver else None
+                            if png:
+                                final_screenshot_b64 = base64.b64encode(png).decode("utf-8")
+                            else:
+                                final_screenshot_b64 = None
+                        except Exception:
+                            final_screenshot_b64 = None
+                    except Exception:
+                        browser_excerpt = ""
+                        final_screenshot_b64 = None
+                    if driver:
+                        driver.quit()
+        else:
+            # Fallback to spreadsheet flow if Chrome not available
+            job_id = str(uuid.uuid4())
+            temp_input = os.path.join(JOBS_DIR, f"temp_{job_id}_input.xlsx")
+            temp_output = os.path.join(JOBS_DIR, f"temp_{job_id}_output.xlsx")
+            try:
+                mapped = map_to_platform_fields(platform, listing_data)
+                pd.DataFrame([mapped]).to_excel(temp_input, index=False)
+                run_from_spreadsheet(temp_input, temp_output)
+                if os.path.exists(temp_output):
+                    df = pd.read_excel(temp_output)
+                    status = str(df.iloc[0].get("Status", "")).lower()
+                    success = ("error" not in status) and ("failed" not in status) and ("chrome" not in status)
+                    result_msg = "Posted successfully" if success else df.iloc[0].get("Status", "Failed")
+            finally:
+                for f in [temp_input, temp_output]:
+                    if os.path.exists(f):
+                        os.unlink(f)
+
+        return {
+            "success": success,
+            "message": result_msg or ("Posted successfully" if success else "Failed to post"),
+            "platform": platform,
+            "product": listing_data.product_name,
+            "page_excerpt": browser_excerpt,
+            "browser_steps": locals().get("diag_steps", []),
+            "final_screenshot_b64": locals().get("final_screenshot_b64", None),
+            "used_poster": used_poster,
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "platform": getattr(request, 'platform', None),
+            "product": getattr(getattr(request, 'listing_data', None), 'product_name', None)
+        }
+
 @app.post("/listings/enhanced-visual/start")
 async def start_enhanced_visual_job(request: EnhancedListingRequest):
     """Start a background visual listing job and return a job_id immediately."""
