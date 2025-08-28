@@ -1019,6 +1019,9 @@ async def create_enhanced_listing_fast(request: EnhancedListingRequest):
                     except ImportError:
                         from backend.multi_platform_listing_bot import create_driver
                     driver = create_driver()
+            except Exception:
+                # Fallback: let downstream error handling report appropriately
+                driver = None
 
                 try:
                     try:
