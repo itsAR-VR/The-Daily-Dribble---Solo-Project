@@ -627,130 +627,22 @@ export default function ListingBotUI() {
               body: JSON.stringify(payload),
             })
           }
-          const startProxyJob = async () => {
-            const r = await fetch(`${PROXY_BASE}/listings/enhanced-visual`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json", "Accept": "application/json" },
-              cache: "no-store",
-              referrerPolicy: "no-referrer",
-              body: JSON.stringify(payload),
-            })
-            return r
-          }
-          const doUpstream = async () => {
-            return await fetch(`${API_BASE_URL}/listings/enhanced-visual`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "Accept": "application/json" },
-              cache: "no-store",
-              referrerPolicy: "no-referrer",
-              body: JSON.stringify(payload),
-              // Explicit CORS mode for clarity
-              mode: "cors",
-            })
-          }
+          // Use only the proxy (which talks to enhanced-fast upstream)
           // Prefer fast synchronous path first for all platforms (including GSM Exchange)
           let response: Response | null = null
           let lastErr: any = null
           
-          // Try sync approach first (proxy then upstream)
+          // Try proxy with a couple of short retries on 502/504
           await warmupServer()
-          try {
-            response = await doProxy()
-            if (!response.ok && (response.status === 502 || response.status === 504)) {
-              response = await doUpstream()
-            }
-          } catch (e) {
+          for (let attempt = 0; attempt < 3; attempt++) {
             try {
-              response = await doUpstream()
-            } catch (e2) {
-              lastErr = e2
+              response = await doProxy()
+              if (response.ok) break
+              if (!(response.status === 502 || response.status === 504)) break
+            } catch (e) {
+              lastErr = e
             }
-          }
-          
-          // If sync failed, fall back to async job
-          if (!response || !response.ok) {
-            try {
-              const start = await startProxyJob()
-              const startJson = await start.json().catch(()=>({}))
-              const jobId = startJson?.job_id
-              
-              if (start.ok && jobId) {
-                // Show progress to user via platformStatuses (do not mutate selectedPlatforms array)
-                updateItem(item.id, {
-                  platformStatuses: {
-                    ...item.platformStatuses,
-                    [platformId]: {
-                      ...(item.platformStatuses[platformId] || {}),
-                      status: 'posting',
-                      message: 'Job started, processing...'
-                    }
-                  }
-                })
-                
-                // Poll for status (up to 3 minutes)
-                for (let i = 0; i < 60; i++) {
-                  await new Promise(r => setTimeout(r, 3000))
-                  try {
-                    // Poll upstream directly to avoid proxy 404s on dynamic routes
-                    const s = await fetch(`${API_BASE_URL}/listings/enhanced-visual/status/${jobId}`, { cache: "no-store" })
-                    if (!s.ok) {
-                      // Treat early 404 as still-queued for a few cycles
-                      if (s.status === 404) continue
-                      continue
-                    }
-                    const sj = await s.json().catch(()=>({}))
-                    
-                    if (sj?.status === "completed" && sj?.result) {
-                      response = new Response(JSON.stringify(sj.result), { 
-                        status: 200, 
-                        headers: { "Content-Type": "application/json" } 
-                      })
-                      break
-                    }
-                    
-                    if (sj?.status === "failed") {
-                      response = new Response(JSON.stringify({ 
-                        success: false, 
-                        message: sj?.error || "Job failed",
-                        browser_steps: sj?.result?.browser_steps
-                      }), { 
-                        status: 500, 
-                        headers: { "Content-Type": "application/json" } 
-                      })
-                      break
-                    }
-                    
-                    // Update progress message
-                    if (i % 5 === 0) {
-                      updateItem(item.id, {
-                        platformStatuses: {
-                          ...item.platformStatuses,
-                          [platformId]: {
-                            ...(item.platformStatuses[platformId] || {}),
-                            status: 'posting',
-                            message: `Processing... (${Math.round(i/60 * 100)}%)`
-                          }
-                        }
-                      })
-                    }
-                  } catch {}
-                }
-                
-                if (!response) {
-                  response = new Response(JSON.stringify({ 
-                    success: false, 
-                    message: "Job timed out after 3 minutes. The listing may still be processing." 
-                  }), { 
-                    status: 504, 
-                    headers: { "Content-Type": "application/json" } 
-                  })
-                }
-              } else {
-                throw new Error(startJson?.message || "Failed to start job")
-              }
-            } catch (e: any) {
-              throw e
-            }
+            await new Promise(r => setTimeout(r, 1000 * (attempt + 1)))
           }
           
           if (!response) throw lastErr || new Error("Network error")
