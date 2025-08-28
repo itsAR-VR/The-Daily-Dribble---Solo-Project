@@ -1160,21 +1160,42 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             except Exception:
                 pass
 
-            # Model autocompleter
+            # Model autocompleter (robust selectors + suggestion pick)
             model = str(row.get("product_name") or row.get("model") or row.get("model_code") or "").strip()
             brand = str(row.get("brand") or "").strip()
             query = f"{brand} {model}".strip() or model or brand
             try:
-                inp = sb.find_element(By.CSS_SELECTOR, "input[name='phModelFull']")
-                inp.clear()
-                for chunk in (query or "").split(" "):
-                    inp.send_keys(chunk + " ")
-                    time.sleep(0.15)
-                time.sleep(0.7)
-                # Try pick first suggestion via keys
-                inp.send_keys("\ue015")  # ArrowDown
-                time.sleep(0.05)
-                inp.send_keys("\ue007")  # Enter
+                inp = None
+                # Try multiple selectors inside sidebar
+                for sel in [
+                    "input[name='phModelFull']",
+                    "form[action*='/offers'] input[name='phModelFull']",
+                    "input[data-component='trading/phoneAutocompleter']",
+                    ".twitter-typeahead input.tt-query",
+                ]:
+                    try:
+                        inp = sb.find_element(By.CSS_SELECTOR, sel)
+                        break
+                    except Exception:
+                        continue
+                if inp:
+                    inp.clear()
+                    for chunk in (query or "").split(" "):
+                        inp.send_keys(chunk + " ")
+                        time.sleep(0.15)
+                    time.sleep(0.8)
+                    # Try suggestions by click
+                    try:
+                        sug = driver.find_element(By.XPATH, "//div[contains(@class,'tt-menu') or contains(@class,'autocomplete') or contains(@class,'suggest')]//div|//ul[contains(@class,'ui-autocomplete')]//li[1]")
+                        if sug and sug.is_displayed():
+                            driver.execute_script("arguments[0].click();", sug)
+                    except Exception:
+                        pass
+                    # Keyboard fallback
+                    try:
+                        inp.send_keys("\ue015"); time.sleep(0.05); inp.send_keys("\ue007")
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
@@ -1267,13 +1288,14 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             except Exception:
                 pass
 
-            # Submit
+            # Submit (broaden selectors and attempt JS submit if needed)
             try:
                 btn = None
                 for sel in [
                     "button.primary.c-tOR-item[type='submit']",
                     "button[type='submit'].primary",
                     "input[type='submit']",
+                    "button.c-tOR-item[type='submit']",
                 ]:
                     try:
                         btn = sb.find_element(By.CSS_SELECTOR, sel)
@@ -1285,6 +1307,14 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                     time.sleep(0.2)
                     driver.execute_script("arguments[0].click();", btn)
                     self._capture_step("gsmx_submit", "Clicked New offer (fast)")
+                else:
+                    # Fallback to submitting the form directly
+                    try:
+                        frm = sb.find_element(By.CSS_SELECTOR, "form[action*='/offers']")
+                        driver.execute_script("if(arguments[0]){arguments[0].requestSubmit ? arguments[0].requestSubmit() : arguments[0].submit();}", frm)
+                        self._capture_step("gsmx_submit_form", "Submitted form via requestSubmit")
+                    except Exception:
+                        pass
             except Exception:
                 pass
 

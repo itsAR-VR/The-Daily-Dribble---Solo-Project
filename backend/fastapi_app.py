@@ -1020,80 +1020,86 @@ async def create_enhanced_listing_fast(request: EnhancedListingRequest):
                         from backend.multi_platform_listing_bot import create_driver
                     driver = create_driver()
             except Exception:
-                # Fallback: let downstream error handling report appropriately
+                # Let downstream logic handle when driver could not be created
                 driver = None
 
+            try:
                 try:
+                    from enhanced_platform_poster import ENHANCED_POSTERS
+                except Exception:
+                    from backend.enhanced_platform_poster import ENHANCED_POSTERS
+                # Capture diagnostic steps (label, note, screenshot)
+                diag_steps: list[dict] = []
+                def _capture_cb(evt: Dict[str, Any]):
                     try:
-                        from enhanced_platform_poster import ENHANCED_POSTERS
+                        diag_steps.append({
+                            "step": evt.get("label"),
+                            "status": "info",
+                            "message": evt.get("note"),
+                            "screenshot_b64": evt.get("image_base64"),
+                            "ts": evt.get("timestamp")
+                        })
                     except Exception:
-                        from backend.enhanced_platform_poster import ENHANCED_POSTERS
-                    # Capture diagnostic steps (label, note, screenshot)
-                    diag_steps: list[dict] = []
-                    def _capture_cb(evt: Dict[str, Any]):
-                        try:
-                            diag_steps.append({
-                                "step": evt.get("label"),
-                                "status": "info",
-                                "message": evt.get("note"),
-                                "screenshot_b64": evt.get("image_base64"),
-                                "ts": evt.get("timestamp")
-                            })
-                        except Exception:
-                            pass
+                        pass
 
-                    poster = ENHANCED_POSTERS[platform](driver, capture_callback=_capture_cb)
-                    used_poster = True
-                    login_ok = poster.login_with_2fa()
-                    if login_ok:
-                        row_like = {
-                            "brand": listing_data.brand,
-                            "product_name": listing_data.product_name,
-                            "model": listing_data.model_code,
-                            "quantity": listing_data.quantity,
-                            "price": listing_data.price,
-                            "currency": listing_data.currency,
-                            "condition": listing_data.condition,
-                            "memory": listing_data.memory,
-                            "color": listing_data.color,
-                            "market_spec": listing_data.market_spec,
-                            "sim_lock_status": listing_data.sim_lock_status,
-                            "carrier": listing_data.carrier,
-                            "country": listing_data.country,
-                            "state": listing_data.state,
-                            "minimum_order_quantity": listing_data.minimum_order_quantity,
-                            "packaging": listing_data.packaging,
-                            "item_weight": listing_data.item_weight,
-                            "weight_unit": listing_data.weight_unit,
-                            "incoterm": listing_data.incoterm,
-                            "accepted_payments": listing_data.accepted_payments,
-                            "description": listing_data.description,
-                            "product_type": listing_data.product_type,
-                            "category": listing_data.category,
-                        }
-                        result_msg = poster.post_listing(row_like)
-                        success = bool(result_msg and str(result_msg).lower().startswith("success"))
-                finally:
+                poster = ENHANCED_POSTERS[platform](driver, capture_callback=_capture_cb)
+                used_poster = True
+                login_ok = poster.login_with_2fa()
+                # Append any steps captured during login
+                try:
+                    if hasattr(poster, 'last_steps') and poster.last_steps:
+                        for s in poster.last_steps:
+                            diag_steps.append({
+                                "step": s.get("step"),
+                                "status": "info",
+                                "message": s.get("message"),
+                                "screenshot_b64": s.get("screenshot_b64"),
+                            })
+                except Exception:
+                    pass
+                if login_ok:
+                    # Use only relevant fields for GSMX/Cellpex
+                    row_like = {
+                        "brand": listing_data.brand,
+                        "product_name": listing_data.product_name,
+                        "model": listing_data.model_code,
+                        "quantity": listing_data.quantity,
+                        "price": listing_data.price,
+                        "currency": listing_data.currency,
+                        "condition": listing_data.condition,
+                        "memory": listing_data.memory,
+                        "color": listing_data.color,
+                        "market_spec": listing_data.market_spec,
+                        "sim_lock_status": listing_data.sim_lock_status,
+                        "carrier": listing_data.carrier,
+                        "description": listing_data.description,
+                        # Routing hints for GSMX sidebar fast path
+                        "product_type": listing_data.product_type,
+                        "category": listing_data.category,
+                    }
+                    result_msg = poster.post_listing(row_like)
+                    success = bool(result_msg and str(result_msg).lower().startswith("success"))
+            finally:
+                try:
+                    # Capture brief page excerpt and final screenshot for debugging
+                    page = driver.page_source if driver else ""
+                    if page:
+                        page_l = page if isinstance(page, str) else str(page)
+                        browser_excerpt = page_l[:1200]
                     try:
-                        # Capture brief page excerpt and final screenshot for debugging
-                        page = driver.page_source if driver else ""
-                        if page:
-                            page_l = page if isinstance(page, str) else str(page)
-                            browser_excerpt = page_l[:1200]
-                        try:
-                            import base64
-                            png = driver.get_screenshot_as_png() if driver else None
-                            if png:
-                                final_screenshot_b64 = base64.b64encode(png).decode("utf-8")
-                            else:
-                                final_screenshot_b64 = None
-                        except Exception:
+                        import base64
+                        png = driver.get_screenshot_as_png() if driver else None
+                        if png:
+                            final_screenshot_b64 = base64.b64encode(png).decode("utf-8")
+                        else:
                             final_screenshot_b64 = None
                     except Exception:
-                        browser_excerpt = ""
                         final_screenshot_b64 = None
-                    if driver:
-                        driver.quit()
+                except Exception:
+                    browser_excerpt = ""
+                    final_screenshot_b64 = None
+                if driver:
+                    driver.quit()
         else:
             # Fallback to spreadsheet flow if Chrome not available
             job_id = str(uuid.uuid4())
