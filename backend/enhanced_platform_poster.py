@@ -3920,8 +3920,205 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
 ENHANCED_POSTERS = {
     'gsmexchange': EnhancedGSMExchangePoster,
     'cellpex': EnhancedCellpexPoster,
-    # Add other platforms as needed
+    # Other platforms registered below
 }
+
+
+class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
+    """Kadorf/Kardof poster using fast, Cellpex-like direct form fill."""
+    PLATFORM = "KARDOF"
+    LOGIN_URL = "https://kadorf.com/login"
+
+    def _select_relaxed(self, select_el, candidates: list[str]) -> bool:
+        try:
+            dd = Select(select_el)
+            opts = dd.options
+            texts = [(o.text or '').strip() for o in opts]
+            lowers = [t.lower() for t in texts]
+            # exact
+            for c in candidates:
+                if not c:
+                    continue
+                cl = str(c).strip().lower()
+                if cl in lowers:
+                    dd.select_by_index(lowers.index(cl))
+                    return True
+            # contains
+            for c in candidates:
+                if not c:
+                    continue
+                cl = str(c).strip().lower()
+                for i, t in enumerate(lowers):
+                    if cl and cl in t:
+                        dd.select_by_index(i)
+                        return True
+            # startswith
+            for c in candidates:
+                if not c:
+                    continue
+                cl = str(c).strip().lower()
+                for i, t in enumerate(lowers):
+                    if cl and t.startswith(cl):
+                        dd.select_by_index(i)
+                        return True
+        except Exception:
+            pass
+        return False
+
+    def post_listing(self, row):
+        driver = self.driver
+        wait = WebDriverWait(driver, 20)
+        try:
+            # Navigate to posting page
+            try:
+                driver.get("https://kadorf.com/sell")
+            except Exception:
+                try:
+                    driver.get("https://kadorf.com/postoffer")
+                except Exception:
+                    pass
+            time.sleep(2)
+            self._capture_step("kadorf_post_page", "Opened Kadorf post offer page")
+
+            # Category
+            try:
+                cat_value = str(row.get("category") or row.get("product_type") or "Mobile Phones")
+                sel = None
+                for loc in [(By.ID, "category"), (By.NAME, "category")] :
+                    try:
+                        sel = driver.find_element(*loc)
+                        break
+                    except Exception:
+                        continue
+                if sel:
+                    ok = False
+                    try:
+                        Select(sel).select_by_visible_text(cat_value)
+                        ok = True
+                    except Exception:
+                        ok = self._select_relaxed(sel, [cat_value, "Mobile Phones", "Phones", "Mobile"])
+                    if ok:
+                        try:
+                            driver.execute_script("arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", sel)
+                        except Exception:
+                            pass
+                        self._capture_step("kadorf_category", f"Category: {cat_value}")
+            except Exception:
+                pass
+
+            # Condition
+            try:
+                cond_in = str(row.get("condition", "New"))
+                cond_sel = driver.find_element(By.NAME, "condition")
+                try:
+                    Select(cond_sel).select_by_visible_text(cond_in)
+                except Exception:
+                    self._select_relaxed(cond_sel, [cond_in, "New", "Used", "Refurbished"])
+                self._capture_step("kadorf_condition", f"Condition: {cond_in}")
+            except Exception:
+                pass
+
+            # Currency
+            try:
+                currency = str(row.get("currency", "USD")).upper()
+                cur_sel = driver.find_element(By.NAME, "currency")
+                try:
+                    Select(cur_sel).select_by_visible_text(currency)
+                except Exception:
+                    self._select_relaxed(cur_sel, [currency, "USD", "EUR", "GBP"]) 
+                self._capture_step("kadorf_currency", f"Currency: {currency}")
+            except Exception:
+                pass
+
+            # Location (optional)
+            try:
+                loc_val = (str(row.get("state") or row.get("country") or "").strip())
+                if loc_val:
+                    loc_input = driver.find_element(By.ID, "location")
+                    loc_input.clear(); loc_input.send_keys(loc_val)
+                    self._capture_step("kadorf_location", f"Location: {loc_val}")
+            except Exception:
+                pass
+
+            # Item fields
+            try:
+                qty = str(row.get("quantity", "1"))
+                brand = str(row.get("brand", "")).strip()
+                model = str(row.get("product_name") or row.get("model") or row.get("model_code") or "").strip()
+                price = str(row.get("price", ""))
+                details = row.get("description") or (f"{row.get('memory','')} {row.get('color','')}".strip())
+
+                def find_by_name(n: str):
+                    try:
+                        return driver.find_element(By.NAME, n)
+                    except Exception:
+                        return None
+
+                q = find_by_name("product[1][quantity]"); b = find_by_name("product[1][brand]"); m = find_by_name("product[1][model]"); p = find_by_name("product[1][price]"); d = find_by_name("product[1][details]")
+                if q: q.clear(); q.send_keys(qty)
+                if b: b.clear(); b.send_keys(brand)
+                if m: m.clear(); m.send_keys(model)
+                if p: 
+                    digits = ''.join(ch for ch in price if (ch.isdigit()))
+                    p.clear(); p.send_keys(digits)
+                if d and details:
+                    d.clear(); d.send_keys(str(details)[:150])
+                self._capture_step("kadorf_item_filled", f"{brand} {model} x{qty} @ {price}")
+            except Exception:
+                pass
+
+            # Submit
+            submitted = False
+            try:
+                for by, sel in [
+                    (By.CSS_SELECTOR, "input[type='submit'].y-button"),
+                    (By.CSS_SELECTOR, "input[type='submit']"),
+                    (By.XPATH, "//input[@type='submit' and (contains(@value,'Post') or contains(@class,'y-button'))]")
+                ]:
+                    try:
+                        btn = driver.find_element(by, sel)
+                        driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", btn)
+                        time.sleep(0.2)
+                        driver.execute_script("arguments[0].click();", btn)
+                        submitted = True
+                        break
+                    except Exception:
+                        continue
+            except Exception:
+                submitted = False
+
+            if not submitted:
+                # Fallback: submit form
+                try:
+                    frm = driver.find_element(By.ID, "postoffer")
+                    driver.execute_script("arguments[0].requestSubmit ? arguments[0].requestSubmit() : arguments[0].submit();", frm)
+                    submitted = True
+                except Exception:
+                    pass
+
+            if not submitted:
+                self._capture_step("kadorf_no_submit", "Submit control not found")
+                return "Error: Could not submit Kadorf form"
+
+            time.sleep(3)
+            page_l = (driver.page_source or '').lower()
+            # Basic success/error heuristics
+            if any(k in page_l for k in ["thank you", "submitted", "success", "offer posted", "saved"]):
+                self._capture_step("kadorf_success", "Offer submitted")
+                return "Success: Kadorf offer submitted"
+            if any(k in page_l for k in ["error", "required", "invalid", "please select", "please fill"]):
+                self._capture_step("kadorf_error", "Inline error detected")
+                return "Error: Form submission failed - check required fields"
+            # Default optimistic result
+            self._capture_step("kadorf_posted", "Submitted without explicit banner")
+            return "Pending: Submitted offer; waiting for confirmation"
+        except Exception as e:
+            self._capture_step("kadorf_exception", str(e))
+            return f"Error: {e}"
+
+
+# Register
+ENHANCED_POSTERS['kardof'] = EnhancedKardofPoster
 
 
 def test_platform_login_with_2fa(platform_name):
