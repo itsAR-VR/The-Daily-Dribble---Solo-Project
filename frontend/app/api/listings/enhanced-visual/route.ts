@@ -53,6 +53,13 @@ export async function POST(req: NextRequest) {
                 if (!json || typeof json !== 'object') json = {}
                 if (json.success === undefined) json.success = false
                 if (!json.message) json.message = `Upstream HTTP ${res.status}`
+                // Include platform context when possible (for easier debugging in UI logs)
+                try {
+                    const parsed = JSON.parse(body || '{}')
+                    if (parsed && typeof parsed === 'object' && parsed.platform && !json.platform) {
+                        json.platform = parsed.platform
+                    }
+                } catch {}
                 return new Response(JSON.stringify(json), { status: 200, headers: { "Content-Type": "application/json" } })
             } catch (e: any) {
                 lastErr = e

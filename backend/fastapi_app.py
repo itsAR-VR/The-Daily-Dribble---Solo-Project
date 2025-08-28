@@ -1001,7 +1001,7 @@ async def create_enhanced_listing_fast(request: EnhancedListingRequest):
         chrome_bin_alt = "/usr/bin/google-chrome-stable"
         chrome_can_run = bool(runtime_remote_url) or os.path.exists(chrome_bin_guess) or os.path.exists(chrome_bin_alt)
 
-        if chrome_can_run and platform in ["cellpex", "gsmexchange"]:
+        if chrome_can_run and platform in ["cellpex", "gsmexchange", "kardof"]:
             from selenium import webdriver
             options = webdriver.ChromeOptions()
             options.add_argument("--disable-blink-features=AutomationControlled")
