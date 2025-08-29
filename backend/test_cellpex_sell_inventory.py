@@ -192,21 +192,12 @@ def test_cellpex_sell_inventory_flow():
             submit_selectors = [
                 "button[type='submit']",
                 "input[type='submit']",
-                "button:contains('Save')",
-                "button:contains('Add')",
-                "button:contains('Create')",
-                "button:contains('Post')",
-                "button:contains('Submit')"
+                
             ]
             
             for selector in submit_selectors:
                 try:
-                    if ":contains" in selector:
-                        # Convert to xpath
-                        xpath_selector = selector.replace("button:contains('", "//button[contains(text(), '").replace("')", "')]")
-                        buttons = driver.find_elements(By.XPATH, xpath_selector)
-                    else:
-                        buttons = driver.find_elements(By.CSS_SELECTOR, selector)
+                    buttons = driver.find_elements(By.CSS_SELECTOR, selector)
                     
                     if buttons:
                         print(f"✅ Found {len(buttons)} buttons for selector: {selector}")

@@ -207,7 +207,7 @@ def test_cellpex_listing_flow():
         # Find submit button for reference
         try:
             submit_button = driver.find_element(By.CSS_SELECTOR, 
-                "button[type='submit'], input[type='submit'], button:contains('Submit'), button:contains('Post')")
+                "button[type='submit'], input[type='submit']")
             print(f"✅ Found submit button: {submit_button.text or submit_button.get_attribute('value')}")
         except:
             print("❌ Could not find submit button")

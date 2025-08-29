@@ -194,7 +194,7 @@ def run_autonomous_cellpex_listing():
                 "input[type='submit']",
                 "button[type='submit']", 
                 "input[value*='Submit' i]",
-                "button:contains('Submit')",
+                
                 "input[name='btnSubmit']"
             ]
             

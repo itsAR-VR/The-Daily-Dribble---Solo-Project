@@ -150,8 +150,7 @@ def test_gsm_2fa_flow():
         submit_selectors = [
             "button[type='submit']",
             "input[type='submit']",
-            "button:contains('Sign in')",
-            "button:contains('Login')",
+            
             "[onclick*='login']",
             "[onclick*='signin']"
         ]
@@ -159,12 +158,7 @@ def test_gsm_2fa_flow():
         submitted = False
         for selector in submit_selectors:
             try:
-                if ":contains" in selector:
-                    # Use xpath for contains
-                    xpath_selector = selector.replace("button:contains('", "//button[contains(text(), '").replace("')", "')]")
-                    submit_btn = driver.find_element(By.XPATH, xpath_selector)
-                else:
-                    submit_btn = driver.find_element(By.CSS_SELECTOR, selector)
+                submit_btn = driver.find_element(By.CSS_SELECTOR, selector)
                 submit_btn.click()
                 submitted = True
                 print(f"✅ Form submitted using: {selector}")
@@ -254,18 +248,13 @@ def test_gsm_2fa_flow():
                     submit_selectors = [
                         "button[type='submit']",
                         "input[type='submit']",
-                        "button:contains('Verify')",
-                        "button:contains('Submit')"
+                        
                     ]
                     
                     submitted = False
                     for selector in submit_selectors:
                         try:
-                            if ":contains" in selector:
-                                xpath_selector = selector.replace("button:contains('", "//button[contains(text(), '").replace("')", "')]")
-                                submit_btn = driver.find_element(By.XPATH, xpath_selector)
-                            else:
-                                submit_btn = driver.find_element(By.CSS_SELECTOR, selector)
+                            submit_btn = driver.find_element(By.CSS_SELECTOR, selector)
                             submit_btn.click()
                             submitted = True
                             print("✅ 2FA form submitted")

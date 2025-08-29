@@ -138,7 +138,7 @@ def test_cellpex_2fa_flow():
                 print("✅ Code entered")
                 
                 # Find and click submit button
-                submit_buttons = driver.find_elements(By.CSS_SELECTOR, "button[type='submit'], input[type='submit'], button:contains('Verify'), button:contains('Submit')")
+                submit_buttons = driver.find_elements(By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")
                 
                 if submit_buttons:
                     submit_buttons[0].click()

@@ -90,9 +90,6 @@ class Universal2FAPlatform(Enhanced2FAMarketplacePoster):
                 "button[type='submit']",
                 "input[type='submit']",
                 "input[name='btnLogin']",  # Cellpex style
-                "button:contains('Login')",
-                "button:contains('Sign in')", 
-                "button:contains('Log in')",
                 "#login",
                 ".login",
                 "[onclick*='login']"
@@ -100,8 +97,19 @@ class Universal2FAPlatform(Enhanced2FAMarketplacePoster):
             
             submit = self._find_element_by_selectors(wait, submit_selectors, "submit button", clickable=True)
             if not submit:
+                # XPath text fallbacks for common login labels to avoid CSS :contains
+                for xp in [
+                    "//button[contains(.,'Login') or contains(.,'Sign in') or contains(.,'Log in')]",
+                    "//input[@type='submit']"
+                ]:
+                    try:
+                        submit = wait.until(EC.element_to_be_clickable((By.XPATH, xp)))
+                        break
+                    except Exception:
+                        continue
+            if not submit:
                 return False
-                
+
             submit.click()
             print(f"✅ Submitted login form")
             

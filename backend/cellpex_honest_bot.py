@@ -311,9 +311,7 @@ class CellpexHonestBot:
             submit_selectors = [
                 "button[type='submit']",
                 "input[type='submit']",
-                "#btnSubmit",
-                "button:contains('Submit')",
-                "button:contains('List')"
+                "#btnSubmit"
             ]
             
             for selector in submit_selectors:
@@ -799,9 +797,7 @@ class CellpexHonestBot:
             submit_selectors = [
                 "button[type='submit']",
                 "input[type='submit']",
-                "#btnSubmit",
-                "button:contains('Submit')",
-                "button:contains('List')"
+                "#btnSubmit"
             ]
             
             for selector in submit_selectors:

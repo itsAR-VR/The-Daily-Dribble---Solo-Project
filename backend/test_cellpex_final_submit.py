@@ -105,8 +105,7 @@ def run_final_cellpex_submit():
                     'input[type="submit"], button[type="submit"], ' +
                     'button:not([type]), input[type="button"], ' +
                     'button[class*="submit"], input[value*="Save"], ' +
-                    'input[value*="Submit"], button:contains("Save"), ' +
-                    'button:contains("Submit")'
+                    'input[value*="Submit"]'
                 );
                 
                 submitElements.forEach(function(btn) {
