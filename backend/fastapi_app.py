@@ -1023,6 +1023,19 @@ async def create_enhanced_listing_fast(request: EnhancedListingRequest):
                 # Let downstream logic handle when driver could not be created
                 driver = None
 
+            if driver is None:
+                # Chrome failed to initialize - return clear error instead of silent failure
+                return {
+                    "success": False,
+                    "message": f"Chrome driver initialization failed for {platform}. Check SELENIUM_REMOTE_URL or local Chrome installation.",
+                    "platform": platform,
+                    "product": listing_data.product_name,
+                    "page_excerpt": "",
+                    "browser_steps": [],
+                    "final_screenshot_b64": None,
+                    "used_poster": False,
+                }
+
             try:
                 try:
                     from enhanced_platform_poster import ENHANCED_POSTERS

@@ -24,7 +24,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
     const body = await req.text()
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 180000)
+    const timeout = setTimeout(() => controller.abort(), 60000)
     try {
         let lastErr: any = null
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
                         if (parsed && typeof parsed === 'object' && parsed.platform && !json.platform) {
                             json.platform = parsed.platform
                         }
-                    } catch {}
+                    } catch { }
                     return new Response(JSON.stringify(json), { status: 200, headers: { "Content-Type": "application/json" } })
                 }
                 lastErr = e
