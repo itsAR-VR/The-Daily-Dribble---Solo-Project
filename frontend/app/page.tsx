@@ -658,7 +658,7 @@ export default function ListingBotUI() {
           }
 
           // eslint-disable-next-line no-console
-          console.debug("↙️ Response:", { status: response.status, ok: response.ok, keys: Object.keys(result || {}) })
+          console.debug("↙️ Response JSON:", result)
 
           // Log browser automation steps for visualization
           if (result.browser_steps) {
@@ -694,7 +694,7 @@ export default function ListingBotUI() {
               ...item.platformStatuses,
               [platformId]: {
                 status: result.success ? "success" : "error",
-                message: result.message,
+                message: result.message || (result.success ? "Posted" : "Failed"),
               },
             },
           })
