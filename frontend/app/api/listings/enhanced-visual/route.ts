@@ -24,7 +24,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
     const body = await req.text()
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 60000)
+    const timeout = setTimeout(() => controller.abort(), 180000)
     try {
         let lastErr: any = null
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -59,9 +59,22 @@ export async function POST(req: NextRequest) {
                     if (parsed && typeof parsed === 'object' && parsed.platform && !json.platform) {
                         json.platform = parsed.platform
                     }
-                } catch {}
+                } catch { }
                 return new Response(JSON.stringify(json), { status: 200, headers: { "Content-Type": "application/json" } })
             } catch (e: any) {
+                // If we aborted, don't retry pointlessly – return a clear error
+                const msg = (e?.message || '').toLowerCase()
+                const isAbort = e?.name === 'AbortError' || msg.includes('aborted') || msg.includes('timeout')
+                if (isAbort) {
+                    let json: any = { success: false, aborted: true, message: `Proxy upstream timeout/abort${e?.message ? ": " + e.message : ''}` }
+                    try {
+                        const parsed = JSON.parse(body || '{}')
+                        if (parsed && typeof parsed === 'object' && parsed.platform && !json.platform) {
+                            json.platform = parsed.platform
+                        }
+                    } catch {}
+                    return new Response(JSON.stringify(json), { status: 200, headers: { "Content-Type": "application/json" } })
+                }
                 lastErr = e
                 await new Promise(r => setTimeout(r, 300 * (attempt + 1)))
             }
