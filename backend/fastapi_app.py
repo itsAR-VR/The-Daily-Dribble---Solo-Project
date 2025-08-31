@@ -995,24 +995,11 @@ async def create_enhanced_listing_fast(request: EnhancedListingRequest):
         result_msg = None
         success = False
 
-        # Determine Chrome availability at runtime
+        # Determine Chrome availability at runtime (same logic as Cellpex that works)
         runtime_remote_url = os.environ.get("SELENIUM_REMOTE_URL")
         chrome_bin_guess = os.environ.get("CHROME_BIN", "/usr/bin/google-chrome")
         chrome_bin_alt = "/usr/bin/google-chrome-stable"
-        # Check for Nix-installed chromium (Railway with nixpacks.toml)
-        nix_chromium_paths = [
-            "/nix/store/*/bin/chromium",
-            "/opt/venv/bin/chromium",
-        ]
-        nix_chromium = None
-        for pattern in nix_chromium_paths:
-            import glob
-            matches = glob.glob(pattern)
-            if matches:
-                nix_chromium = matches[0]
-                break
-        
-        chrome_can_run = bool(runtime_remote_url) or os.path.exists(chrome_bin_guess) or os.path.exists(chrome_bin_alt) or bool(nix_chromium)
+        chrome_can_run = bool(runtime_remote_url) or os.path.exists(chrome_bin_guess) or os.path.exists(chrome_bin_alt)
 
         if chrome_can_run and platform in ["cellpex", "gsmexchange", "kardof"]:
             from selenium import webdriver
@@ -1029,26 +1016,10 @@ async def create_enhanced_listing_fast(request: EnhancedListingRequest):
             driver = None
             try:
                 if runtime_remote_url:
+                    # Use remote Selenium (same as working Cellpex)
                     driver = webdriver.Remote(command_executor=runtime_remote_url, options=options)
-                elif nix_chromium:
-                    # Use Nix-installed chromium (Railway)
-                    options.binary_location = nix_chromium
-                    # Find chromedriver in Nix store
-                    chromedriver_patterns = ["/nix/store/*/bin/chromedriver", "/opt/venv/bin/chromedriver"]
-                    chromedriver_path = None
-                    for pattern in chromedriver_patterns:
-                        matches = glob.glob(pattern)
-                        if matches:
-                            chromedriver_path = matches[0]
-                            break
-                    if chromedriver_path:
-                        from selenium.webdriver.chrome.service import Service
-                        service = Service(executable_path=chromedriver_path)
-                        driver = webdriver.Chrome(service=service, options=options)
-                    else:
-                        # Try without explicit service path
-                        driver = webdriver.Chrome(options=options)
                 else:
+                    # Use local Chrome (same as working Cellpex)
                     try:
                         from multi_platform_listing_bot import create_driver
                     except ImportError:
