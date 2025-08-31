@@ -1546,15 +1546,15 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             # Product/Model name
             try:
                 product_name = str(row.get("product_name") or row.get("model") or row.get("model_code") or "").strip()
-                        brand = str(row.get("brand", "")).strip()
+                brand = str(row.get("brand", "")).strip()
                 query = f"{brand} {product_name}".strip() if brand else product_name
                 
                 model_input = wait.until(EC.presence_of_element_located((By.NAME, "phModelFull")))
                 model_input.clear()
                 model_input.send_keys(query)
                 self._capture_step("gsmx_model_filled", f"Model: {query}")
-                except Exception:
-                    pass
+            except Exception:
+                pass
 
             # Quantity
             try:
@@ -1618,7 +1618,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 submit_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")))
                 submit_btn.click()
                 self._capture_step("gsmx_submitted", "Submitted GSM Exchange offer")
-                    except Exception:
+            except Exception:
                 return "Error: Could not submit GSM Exchange offer"
 
             # Wait for response and check for success
@@ -1627,12 +1627,12 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             
             if any(keyword in page_text for keyword in ["success", "offer created", "offer posted", "thank you"]):
                 self._capture_step("gsmx_success", "GSM Exchange offer posted successfully")
-                    return "Success: GSM Exchange offer posted"
+                return "Success: GSM Exchange offer posted"
             elif any(keyword in page_text for keyword in ["error", "required", "invalid", "please fill"]):
                 self._capture_step("gsmx_error", "Form submission error")
                 return "Error: Form submission failed - check required fields"
             else:
-            return "Pending: Submitted offer; waiting for confirmation"
+                return "Pending: Submitted offer; waiting for confirmation"
             
         except TimeoutException:
             return "Timeout posting listing"
