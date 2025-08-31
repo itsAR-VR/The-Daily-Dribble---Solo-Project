@@ -612,352 +612,65 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             return False
 
     def login_with_2fa(self) -> bool:
-        """GSM Exchange specific login with optional email 2FA.
-        Hardened with longer waits, cookie dismissal, CTA fallbacks, iframe scan and success heuristics.
-        """
+        """GSM Exchange simple login - replicate Cellpex's direct approach."""
         driver = self.driver
+        driver.get(self.LOGIN_URL)
+        self._capture_step("gsmx_login_page", f"Opened login page: {self.LOGIN_URL}")
+        wait = WebDriverWait(driver, 20)
+        
         try:
-            # Install stealth and human-like behavior before first navigation
-            try:
-                self._install_stealth()
-            except Exception:
-                pass
-            self._human_wiggle_mouse(2)
-            self._pace()
-
-            # Be generous with page load and element waits during login
-            try:
-                driver.set_page_load_timeout(60)
-            except Exception:
-                pass
-            wait_short = WebDriverWait(driver, 15)
-            wait_long = WebDriverWait(driver, 60)
-
-            # Open login page and dismiss any blocking popups
-            # Try to restore cookies first to avoid unnecessary login
-            try:
-                driver.get("https://www.gsmexchange.com/")
-                self._pace()
-                if self._load_cookies("session"):
-                    self._capture_step("gsmx_cookies_loaded", "Restored session cookies")
-                    driver.refresh(); time.sleep(1.5)
-            except Exception:
-                pass
-
-            driver.get(self.LOGIN_URL)
-            self._capture_step("gsmx_login_page", f"Opened login page: {self.LOGIN_URL}")
-            try:
-                self._dismiss_gsmx_popups()
-            except Exception:
-                pass
-
-            # If /signin returns Not Found (their site does this when already logged in),
-            # treat it as an already-authenticated session by probing /en/phones.
-            try:
-                probe = driver.execute_script(
-                    "return {title: document.title, forms: document.querySelectorAll('form').length, body: (document.body && document.body.innerText) ? document.body.innerText.slice(0,600).toLowerCase() : ''}"
-                )
-            except Exception:
-                probe = None
-            try:
-                is_signin_404 = False
-                if probe:
-                    ttl = (probe.get('title','') or '').lower()
-                    bod = (probe.get('body','') or '').lower()
-                    forms_n = int(probe.get('forms', 0) or 0)
-                    is_signin_404 = ('not found' in ttl) or ('not found' in bod) or (forms_n == 0)
-                if is_signin_404:
-                    self._capture_step("gsmx_signin_404_probe", "Signin page looks Not Found/empty, probing /en/phones for session")
-                    driver.get("https://www.gsmexchange.com/en/phones")
-                    time.sleep(2)
-                    self._dismiss_gsmx_popups()
-                    if self._check_login_success():
-                        self._capture_step("gsmx_already_logged_in", "Detected active session via /en/phones")
-                        try:
-                            self._save_cookies("session")
-                        except Exception:
-                            pass
-                        return True
-            except Exception:
-                pass
-
-            if self._bot_block_detected():
-                self._capture_step("gsmx_bot_block", "Captcha or bot-detection page detected at login")
-                # Try a small wait and refresh once to allow human-like retry
-                time.sleep(3)
-                try:
-                    driver.refresh(); time.sleep(2)
-                    self._dismiss_gsmx_popups()
-                except Exception:
-                    pass
-
-            # Sometimes the email/password form is hidden behind a CTA – try a few obvious ones
-            for xp in [
-                "//button[contains(.,'Sign in') or contains(.,'Log in') or contains(.,'Continue')]",
-                "//a[contains(.,'Sign in') or contains(.,'Log in') or contains(.,'Continue')]",
-                "//button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'email')]",
-                "//a[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'email')]",
-            ]:
-                try:
-                    el = driver.find_element(By.XPATH, xp)
-                    if el.is_displayed():
-                        self._human_click(el)
-                        time.sleep(1)
-                        self._dismiss_gsmx_popups()
-                except Exception:
-                    continue
-
-            # If the form is inside an iframe, try to switch to it
-            def _try_switch_to_login_iframe() -> bool:
-                try:
-                    iframes = driver.find_elements(By.TAG_NAME, "iframe")
-                except Exception:
-                    iframes = []
-                for i, fr in enumerate(iframes[:6]):
-                    try:
-                        driver.switch_to.default_content()
-                        driver.switch_to.frame(fr)
-                        # Probe for username/email field quickly
-                        if driver.find_elements(By.CSS_SELECTOR, "input[type='email'], input[name='email'], input#email, input#username"):
-                            return True
-                    except Exception:
-                        continue
-                try:
-                    driver.switch_to.default_content()
-                except Exception:
-                    pass
-                return False
-
-            _try_switch_to_login_iframe()
-
-            # Locate username/email field with broad selector set
-            user_field = None
-            user_selectors = [
-                (By.NAME, "email"), (By.ID, "email"), (By.CSS_SELECTOR, "input[type='email']"),
-                (By.NAME, "username"), (By.ID, "username"),
-                (By.CSS_SELECTOR, "input[autocomplete='username']"),
-                (By.CSS_SELECTOR, "input[name*='login' i]"),
-                (By.CSS_SELECTOR, "input[id*='login' i]"),
-                (By.CSS_SELECTOR, "input[name*='user' i]"),
-                (By.CSS_SELECTOR, "input[id*='user' i]"),
-                (By.CSS_SELECTOR, "form input:not([type='hidden'])[type='text']"),
-            ]
-            for by, sel in user_selectors:
-                try:
-                    user_field = wait_long.until(EC.presence_of_element_located((by, sel)))
-                    break
-                except Exception:
-                    continue
-            if not user_field:
-                # Try once more after clicking likely CTAs and switching frames again
-                _try_switch_to_login_iframe()
-                self._dismiss_gsmx_popups()
-                for by, sel in user_selectors:
-                    try:
-                        user_field = wait_short.until(EC.presence_of_element_located((by, sel)))
-                        break
-                    except Exception:
-                        continue
-            if not user_field:
-                raise TimeoutException("username/email input not found")
-            try:
-                user_field.clear()
-            except Exception:
-                pass
-            self._human_type(user_field, self.username)
-
-            # Locate password field with progressive flow support (email -> Continue -> password)
-            pass_field = None
-            pass_selectors = [
-                (By.NAME, "password"), (By.ID, "password"), (By.CSS_SELECTOR, "input[type='password']"),
-                (By.CSS_SELECTOR, "input[autocomplete='current-password']"),
-                (By.CSS_SELECTOR, "input[name*='pass' i]"),
-                (By.CSS_SELECTOR, "input[id*='pass' i]"),
-            ]
-            # First, try a short wait in case both fields are on the same page
-            for by, sel in pass_selectors:
-                try:
-                    pass_field = WebDriverWait(driver, 10).until(EC.presence_of_element_located((by, sel)))
-                    break
-                except Exception:
-                    continue
-            if not pass_field:
-                # Try clicking a progressive CTA (Continue/Next) to reveal password screen
-                for xp in [
-                    "//button[contains(.,'Continue') or contains(.,'Next')]",
-                    "//a[contains(.,'Continue') or contains(.,'Next')]",
-                    "//button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'password')]",
-                ]:
-                    try:
-                        el = driver.find_element(By.XPATH, xp)
-                        if el.is_displayed():
-                            self._capture_step("gsmx_progressive_continue", f"Clicking progressive CTA: {xp}")
-                            self._human_click(el)
-                            time.sleep(1.2)
-                            self._dismiss_gsmx_popups()
-                            _try_switch_to_login_iframe()
-                            break
-                    except Exception:
-                        continue
-                # Now wait longer for the password field to appear
-                for by, sel in pass_selectors:
-                    try:
-                        pass_field = wait_long.until(EC.presence_of_element_located((by, sel)))
-                        break
-                    except Exception:
-                        continue
-            if not pass_field:
-                # As a last attempt, click any obvious Sign in/Login CTA again to surface the form
-                for xp in [
-                    "//button[contains(.,'Sign in') or contains(.,'Log in') or contains(.,'Login')]",
-                    "//a[contains(.,'Sign in') or contains(.,'Log in') or contains(.,'Login')]",
-                ]:
-                    try:
-                        el = driver.find_element(By.XPATH, xp)
-                        if el.is_displayed():
-                            self._human_click(el)
-                            time.sleep(1.2)
-                            self._dismiss_gsmx_popups()
-                            _try_switch_to_login_iframe()
-                            for by, sel in pass_selectors:
-                                try:
-                                    pass_field = WebDriverWait(driver, 10).until(EC.presence_of_element_located((by, sel)))
-                                    break
-                                except Exception:
-                                    continue
-                            if pass_field:
-                                break
-                    except Exception:
-                        continue
-            if not pass_field:
-                raise TimeoutException("password input not found (after progressive attempts)")
-            try:
-                pass_field.clear()
-            except Exception:
-                pass
-            self._human_type(pass_field, self.password)
-            self._capture_step("gsmx_login_filled", "Filled GSMX credentials")
-
-            # Submit the form
-            submitted = False
-            for by, sel in [
-                (By.CSS_SELECTOR, "button[type='submit']"),
-                (By.CSS_SELECTOR, "input[type='submit']"),
-                (By.XPATH, "//button[contains(.,'Sign in') or contains(.,'Login') or contains(.,'Log in') or contains(.,'Continue')]")
-            ]:
-                try:
-                    btn = driver.find_element(by, sel)
-                    driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", btn)
-                    time.sleep(0.2)
-                    self._dismiss_gsmx_popups()
-                    self._human_click(btn)
-                    submitted = True
-                    break
-                except Exception:
-                    continue
-            if not submitted:
-                try:
-                    pass_field.send_keys("\n")
-                    submitted = True
-                except Exception:
-                    pass
-            self._capture_step("gsmx_login_submitted", "Submitted GSMX login")
-
-            # Give time for redirect and check for 2FA prompt
+            print(f"🔐 Logging into {self.PLATFORM}...")
+            
+            # GSM Exchange specific selectors (mimic Cellpex directness)
+            user_field = wait.until(EC.presence_of_element_located(
+                (By.CSS_SELECTOR, "input[name='email'], input[type='email'], input[name='username']")
+            ))
+            user_field.clear()
+            user_field.send_keys(self.username)
+            
+            pass_field = wait.until(EC.presence_of_element_located(
+                (By.CSS_SELECTOR, "input[name='password'], input[type='password']")
+            ))
+            pass_field.clear()
+            pass_field.send_keys(self.password)
+            self._capture_step("gsmx_login_filled", "Filled GSM Exchange credentials")
+            
+            # Submit login
+            submit = wait.until(EC.element_to_be_clickable(
+                (By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")
+            ))
+            submit.click()
+            self._capture_step("gsmx_login_submitted", "Submitted GSM Exchange login")
+            
+            # Wait for potential redirect
             time.sleep(3)
-            try:
-                self._dismiss_gsmx_popups()
-            except Exception:
-                pass
-
-            if self._bot_block_detected():
-                self._capture_step("gsmx_bot_block", "Captcha or bot-detection screen after submit")
-                # Wait a little and do a gentle refresh once
-                time.sleep(3)
-                try:
-                    driver.refresh(); time.sleep(2)
-                    self._dismiss_gsmx_popups()
-                except Exception:
-                    pass
-            page_l = driver.page_source.lower()
-            needs_2fa = any(k in page_l for k in [
+            
+            # Check for 2FA
+            page_text = driver.page_source.lower()
+            needs_2fa = any(k in page_text for k in [
                 "verification", "verify your identity", "2fa", "enter code", "security code", "authentication code"
-            ]) or bool(driver.find_elements(By.XPATH, "//input[@name='code' or @name='otp' or @name='token']"))
+            ])
+            
             if needs_2fa:
-                self._capture_step("gsmx_2fa_page", "GSMX 2FA verification page detected")
-                if not self._handle_gsmx_2fa():
-                    return False
-
-            # Heuristic success: URL no longer contains 'signin' and page has dashboard/account keywords
-            try:
-                WebDriverWait(driver, 20).until(lambda d: "signin" not in (d.current_url or "").lower())
-            except Exception:
-                pass
-            if self._check_login_success():
-                self._capture_step("gsmx_login_success", "Logged in to GSMX")
-                try:
-                    self._save_cookies("session")
-                except Exception:
-                    pass
-                return True
-
-            # As a fallback, try alternative login routes once more if we still appear logged out
-            for url in [
-                "https://www.gsmexchange.com/login",
-                "https://www.gsmexchange.com/en/login",
-                "https://www.gsmexchange.com/en/signin",
-                "https://www.gsmexchange.com/trading/signin",
-                "https://www.gsmexchange.com/en/phones",
-            ]:
-                try:
-                    driver.get(url)
-                    time.sleep(2)
-                    self._dismiss_gsmx_popups()
-                    # Quick probe for already-authenticated state
-                    if self._check_login_success():
-                        self._capture_step("gsmx_login_success", f"Logged in via fallback: {url}")
-                        try:
-                            self._save_cookies("session")
-                        except Exception:
-                            pass
-                        return True
-                except Exception:
-                    continue
-
-            # Final state – capture debug and treat as timeout/failure (with tab crash recovery)
-            try:
-                dbg = driver.execute_script(
-                    "return {url: location.href, title: document.title, hasForm: !!document.querySelector('form'), body: (document.body && document.body.innerText) ? document.body.innerText.slice(0,800) : ''}"
-                )
-            except Exception:
-                dbg = None
-            self._capture_step("gsmx_login_timeout", f"Login timeout{(' | ' + str(dbg)) if dbg else ''}")
-            # Attempt a single tab crash recovery: open a clean tab, try /en/phones once
-            try:
-                driver.switch_to.new_window('tab')
-                driver.get("https://www.gsmexchange.com/en/phones")
-                time.sleep(2)
-                self._dismiss_gsmx_popups()
+                print(f"📱 2FA required for {self.PLATFORM}")
+                self._capture_step("gsmx_2fa_page", "GSM Exchange 2FA verification page detected")
+                return self._handle_gsmx_2fa()
+            else:
+                # Check if login successful
                 if self._check_login_success():
-                    self._capture_step("gsmx_recovered", "Recovered from timeout via new tab on /en/phones")
-                    try:
-                        self._save_cookies("session")
-                    except Exception:
-                        pass
+                    print(f"✅ Logged into {self.PLATFORM} successfully")
+                    self._capture_step("gsmx_login_success", "Logged in to GSM Exchange")
                     return True
-            except Exception:
-                pass
-            return False
+                else:
+                    print(f"❌ Login failed for {self.PLATFORM}")
+                    return False
+                
         except TimeoutException:
-            try:
-                dbg = self.driver.execute_script(
-                    "return {url: location.href, title: document.title, iframes: document.querySelectorAll('iframe').length, forms: document.querySelectorAll('form').length, body: (document.body && document.body.innerText) ? document.body.innerText.slice(0,800) : ''}"
-                )
-            except Exception:
-                dbg = None
-            self._capture_step("gsmx_login_timeout", f"Login timeout{(' | ' + str(dbg)) if dbg else ''}")
+            print(f"❌ Login timeout for {self.PLATFORM}")
+            self._capture_step("gsmx_login_timeout", "Login timeout")
             return False
         except Exception as e:
+            print(f"❌ Login error for {self.PLATFORM}: {e}")
             self._capture_step("gsmx_login_error", f"{e}")
             return False
 
@@ -1806,361 +1519,120 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             return False
     
     def post_listing(self, row):
-        """Post listing on GSM Exchange (Phones > Add offer → I want to sell)."""
-        # Fast path first: try sidebar forms with minimal navigation
-        try:
-            quick = self._post_listing_via_sidebar(row)
-            if isinstance(quick, str):
-                return quick
-        except Exception:
-            pass
+        """Post listing on GSM Exchange - direct approach like Cellpex."""
         driver = self.driver
         wait = WebDriverWait(driver, 20)
         
-        def _try_pick_typeahead(input_el, text: str) -> bool:
-            try:
-                input_el.clear()
-                for chunk in text.split(" "):
-                    input_el.send_keys(chunk + " ")
-                    time.sleep(0.2)
-                time.sleep(1)
-                # Try dropdown item
-                try:
-                    dropdown = driver.find_element(By.CSS_SELECTOR, ".tt-dropdown-menu")
-                    if dropdown.is_displayed():
-                        try:
-                            first_item = dropdown.find_element(By.XPATH, ".//div|.//li")
-                            driver.execute_script("arguments[0].click();", first_item)
-                            return True
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-                # Keyboard fallback
-                try:
-                    input_el.send_keys("\ue015")  # ArrowDown
-                    time.sleep(0.1)
-                    input_el.send_keys("\ue007")  # Enter
-                    return True
-                except Exception:
-                    return False
-            except Exception:
-                return False
-
         try:
-            # Navigate to phones page first (new UI), then fallback to legacy offers page
-            driver.get("https://www.gsmexchange.com/en/phones")
-            time.sleep(2)
-            self._dismiss_gsmx_popups()
-            self._capture_step("gsmx_phones", "Opened GSM Exchange phones page")
-            # Ensure the add-offer form exists; otherwise navigate to legacy, or try robust fallbacks
-            form_present = False
+            # Navigate directly to the posting page (like Cellpex does)
+            print("📍 Navigating to GSM Exchange Add Offer page...")
+            driver.get("https://www.gsmexchange.com/en/phones?tab=offers")
+            self._capture_step("gsmx_offer_page", "Opened GSM Exchange offer page")
+            
+            # Wait for form to load
+            time.sleep(3)
+            
+            # Fill form fields based on GSM Exchange selectors (like Cellpex approach)
+            print("📝 Filling GSM Exchange listing form...")
+            
+            # Select "I want to sell" if radio present
             try:
-                driver.find_element(By.NAME, "phModelFull")
-                form_present = True
-            except Exception:
-                form_present = False
-            if not form_present:
-                driver.get("https://www.gsmexchange.com/gsm/post_offers.html")
-                time.sleep(2)
-                self._dismiss_gsmx_popups()
-                self._capture_step("gsmx_legacy", "Opened legacy post offers page")
-                try:
-                    driver.find_element(By.NAME, "phModelFull")
-                    form_present = True
-                except Exception:
-                    form_present = False
-            if not form_present:
-                if not self._open_offer_form():
-                    return "Error: Could not open GSM Exchange Add Offer form"
-
-            # Pick SELL if radio is present (id=typeSell or name=isOffer value=1)
-            try:
-                sell_radio = None
-                for by, sel in [
-                    (By.CSS_SELECTOR, "#typeSell"),
-                    (By.CSS_SELECTOR, "input[name='isOffer'][value='1']"),
-                    (By.XPATH, "//label[contains(.,'I want to sell')]/preceding::input[1]")
-                ]:
-                    try:
-                        sell_radio = driver.find_element(by, sel)
-                        break
-                    except Exception:
-                        continue
-                if sell_radio and sell_radio.is_displayed():
-                    driver.execute_script("arguments[0].click();", sell_radio)
-                    self._capture_step("gsmx_sell", "Selected I want to sell")
+                sell_radio = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#typeSell, input[name='isOffer'][value='1']")))
+                sell_radio.click()
+                self._capture_step("gsmx_sell_selected", "Selected I want to sell")
             except Exception:
                 pass
-
-            # Model autocomplete (phModelFull)
-            product_name = str(row.get("product_name") or row.get("model") or row.get("model_code") or "").strip()
-            if product_name:
-                try:
-                    # Support both new and legacy typeahead inputs
-                    model_input = None
-                    for by, sel in [
-                        (By.NAME, "phModelFull"),
-                        (By.CSS_SELECTOR, "input[data-component='trading/phoneAutocompleter']"),
-                        (By.CSS_SELECTOR, ".twitter-typeahead input.tt-query"),
-                    ]:
-                        try:
-                            model_input = wait.until(EC.presence_of_element_located((by, sel)))
-                            break
-                        except Exception:
-                            continue
-                    if not model_input:
-                        raise TimeoutException("model input not found")
-                    # If brand exists, prepend for better matching of typeahead entries
-                    try:
-                        brand = str(row.get("brand", "")).strip()
-                    except Exception:
-                        brand = ""
-                    query = product_name
-                    if brand and not product_name.lower().startswith(brand.lower() + " "):
-                        query = f"{brand} {product_name}".strip()
-                    picked = _try_pick_typeahead(model_input, query)
-                    self._capture_step("gsmx_model", f"Model set: {product_name}{' (picked)' if picked else ''}")
-                except Exception:
-                    pass
-
-            # Quantity (phQty)
+            
+            # Product/Model name
+            try:
+                product_name = str(row.get("product_name") or row.get("model") or row.get("model_code") or "").strip()
+                brand = str(row.get("brand", "")).strip()
+                query = f"{brand} {product_name}".strip() if brand else product_name
+                
+                model_input = wait.until(EC.presence_of_element_located((By.NAME, "phModelFull")))
+                model_input.clear()
+                model_input.send_keys(query)
+                self._capture_step("gsmx_model_filled", f"Model: {query}")
+            except Exception:
+                pass
+            
+            # Quantity
             try:
                 qty_val = str(row.get("quantity", "1"))
-                qty_el = None
-                for loc in [(By.ID, "f-at-qty"), (By.NAME, "phQty")]:
-                    try:
-                        qty_el = driver.find_element(*loc)
-                        break
-                    except Exception:
-                        continue
-                if qty_el:
-                    qty_el.clear(); qty_el.send_keys(qty_val)
-                    self._capture_step("gsmx_qty", f"Quantity: {qty_val}")
+                qty_field = driver.find_element(By.NAME, "phQty")
+                qty_field.clear()
+                qty_field.send_keys(qty_val)
+                self._capture_step("gsmx_qty_filled", f"Quantity: {qty_val}")
             except Exception:
                 pass
-
-            # Currency (phCurrency)
+            
+            # Currency
             try:
                 currency = str(row.get("currency", "USD")).upper()
-                cur_el = None
-                for loc in [(By.ID, "f-at-currency"), (By.NAME, "phCurrency")]:
-                    try:
-                        cur_el = driver.find_element(*loc)
-                        break
-                    except Exception:
-                        continue
-                if cur_el:
-                    try:
-                        Select(cur_el).select_by_value(currency)
-                    except Exception:
-                        Select(cur_el).select_by_visible_text(currency)
-                    self._capture_step("gsmx_currency", f"Currency: {currency}")
+                currency_select = Select(driver.find_element(By.NAME, "phCurrency"))
+                currency_select.select_by_visible_text(currency)
+                self._capture_step("gsmx_currency_filled", f"Currency: {currency}")
             except Exception:
                 pass
-
-            # Price (phPrice)
+            
+            # Price
             try:
                 price_val = str(row.get("price", ""))
-                price_el = None
-                for loc in [(By.ID, "f-at-price"), (By.NAME, "phPrice")]:
-                    try:
-                        price_el = driver.find_element(*loc)
-                        break
-                    except Exception:
-                        continue
-                if price_el:
-                    price_el.clear(); price_el.send_keys(price_val)
-                    self._capture_step("gsmx_price", f"Price: {price_val}")
+                price_field = driver.find_element(By.NAME, "phPrice")
+                price_field.clear()
+                price_field.send_keys(price_val)
+                self._capture_step("gsmx_price_filled", f"Price: {price_val}")
             except Exception:
                 pass
-
-            # Condition (phCondition)
+            
+            # Condition
             try:
-                cond = str(row.get("condition", "New")).strip()
-                cond_map = {
-                    "new": "New",
-                    "used": "Used and tested",
-                    "refurbished": "Refurbished",
-                    "14-days": "7 day / 14 day",
-                    "14 days": "7 day / 14 day",
-                    "asis": "ASIS",
-                    "cpo": "CPO",
-                    "pre order": "Pre order",
-                }
-                desired = cond_map.get(cond.lower(), cond)
-                cond_el = None
-                for loc in [(By.ID, "f-at-condition"), (By.NAME, "phCondition")]:
-                    try:
-                        cond_el = driver.find_element(*loc)
-                        break
-                    except Exception:
-                        continue
-                if cond_el:
-                    ok = False
-                    try:
-                        Select(cond_el).select_by_visible_text(desired)
-                        ok = True
-                    except Exception:
-                        # relaxed contains
-                        options = Select(cond_el).options
-                        for i, o in enumerate(options):
-                            if desired.lower() in (o.text or "").lower():
-                                Select(cond_el).select_by_index(i)
-                                ok = True
-                                break
-                    if ok:
-                        self._capture_step("gsmx_condition", f"Condition: {desired}")
+                condition = str(row.get("condition", "New"))
+                condition_select = Select(driver.find_element(By.NAME, "phCondition"))
+                condition_select.select_by_visible_text(condition)
+                self._capture_step("gsmx_condition_filled", f"Condition: {condition}")
             except Exception:
                 pass
-
-            # Specification (phSpec) from market_spec
+            
+            # Comments/Description
             try:
-                spec = str(row.get("market_spec", row.get("market", "US"))).strip().upper()
-                spec_map = {
-                    "US": "US spec.",
-                    "EURO": "Euro spec.",
-                    "EU": "Euro spec.",
-                    "UK": "UK spec.",
-                    "ASIA": "Asia spec.",
-                    "ARABIC": "Arab spec.",
-                    "ARAB": "Arab spec.",
-                    "INDIA": "Indian spec.",
-                    "INDIAN": "Indian spec.",
-                    "AFRICA": "African spec.",
-                    "LATIN": "Latin spec.",
-                    "JAPAN": "Japanese spec.",
-                    "JAPANESE": "Japanese spec.",
-                    "CHINA": "China spec.",
-                    "CANADA": "Canada Spec.",
-                    "GLOBAL": "Global Spec.",
-                    "OTHER": "Other spec.",
-                }
-                desired = spec_map.get(spec, "Global Spec.")
-                spec_el = None
-                for loc in [(By.ID, "f-at-spec"), (By.NAME, "phSpec")]:
-                    try:
-                        spec_el = driver.find_element(*loc)
-                        break
-                    except Exception:
-                        continue
-                if spec_el:
-                    ok = False
-                    try:
-                        Select(spec_el).select_by_visible_text(desired)
-                        ok = True
-                    except Exception:
-                        options = Select(spec_el).options
-                        for i, o in enumerate(options):
-                            if desired.lower() in (o.text or "").lower():
-                                Select(spec_el).select_by_index(i)
-                                ok = True
-                                break
-                    if ok:
-                        self._capture_step("gsmx_spec", f"Spec: {desired}")
+                description = row.get("description") or f"High quality {brand} device in {row.get('condition', 'excellent')} condition"
+                comments_field = driver.find_element(By.NAME, "phComments")
+                comments_field.clear()
+                comments_field.send_keys(str(description)[:1000])
+                self._capture_step("gsmx_description_filled", "Description entered")
             except Exception:
                 pass
-
-            # Comments (phComments)
+            
+            # Confirm stock checkbox
             try:
-                comments = row.get("description") or ""
-                if not comments:
-                    comments = f"Condition: {row.get('condition','')} | Memory: {row.get('memory','')} | Color: {row.get('color','')}"
-                com_el = None
-                for loc in [(By.ID, "comments"), (By.NAME, "phComments")]:
-                    try:
-                        com_el = driver.find_element(*loc)
-                        break
-                    except Exception:
-                        continue
-                if com_el:
-                    com_el.clear(); com_el.send_keys(comments[:1000])
-                    self._capture_step("gsmx_comments", "Comments entered")
+                confirm_cb = driver.find_element(By.NAME, "confirm")
+                if not confirm_cb.is_selected():
+                    confirm_cb.click()
+                self._capture_step("gsmx_confirm_stock", "Confirmed physical stock")
             except Exception:
                 pass
-
-            # Confirm physical stock (confirm)
+            
+            # Submit the form
             try:
-                cb = None
-                for loc in [(By.ID, "f-at-confirm"), (By.NAME, "confirm")]:
-                    try:
-                        cb = driver.find_element(*loc)
-                        break
-                    except Exception:
-                        continue
-                if cb and not cb.is_selected():
-                    driver.execute_script("arguments[0].click();", cb)
-                    self._capture_step("gsmx_confirm", "Confirmed physical stock")
+                submit_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")))
+                submit_btn.click()
+                self._capture_step("gsmx_submitted", "Submitted GSM Exchange offer")
             except Exception:
-                pass
-
-            # Submit the offer (site-specific selectors for primary button)
-            submitted = False
-            for loc in [
-                (By.CSS_SELECTOR, "button.primary.c-tOR-item[type='submit']"),
-                (By.CSS_SELECTOR, "button[type='submit'].primary"),
-                (By.CSS_SELECTOR, "button.c-tOR-item[type='submit']"),
-                (By.XPATH, "//button[@type='submit' and contains(.,'New offer') or contains(.,'Post') or contains(.,'Create') or contains(.,'Submit')]")
-            ]:
-                try:
-                    btn = driver.find_element(*loc)
-                    driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", btn)
-                    time.sleep(0.2)
-                    driver.execute_script("arguments[0].click();", btn)
-                    submitted = True
-                    self._capture_step("gsmx_submit", "Clicked New offer")
-                    break
-                except Exception:
-                    continue
-            # Additional submit fallbacks (legacy forms)
-            if not submitted:
-                for by, sel in [
-                    (By.CSS_SELECTOR, "input[type='submit'][value*='New offer' i]"),
-                    (By.CSS_SELECTOR, "input[type='submit'][value*='Post' i]"),
-                    (By.CSS_SELECTOR, "button[type='submit']"),
-                    (By.CSS_SELECTOR, "input[type='submit']"),
-                    (By.XPATH, "//input[@type='submit' and contains(translate(@value,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'add offer')]")
-                ]:
-                    try:
-                        btn = driver.find_element(by, sel)
-                        driver.execute_script("arguments[0].click();", btn)
-                        submitted = True
-                        self._capture_step("gsmx_submit_fallback", f"Clicked submit via {sel}")
-                        break
-                    except Exception:
-                        continue
-
-            if not submitted:
-                self._capture_step("gsmx_no_submit", "Submit button not found")
                 return "Error: Could not submit GSM Exchange offer"
-
-            # Wait for a success cue
+            
+            # Wait for response and check for success
             time.sleep(4)
-            page = driver.page_source.lower()
-            # Targeted success banner (site-specific)
-            try:
-                banner = driver.find_element(By.XPATH, "//div[contains(@class,'alert') and contains(@class,'success')] | //div[contains(@class,'notice') and contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'success')] | //p[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'offer has been')]")
-                if banner and banner.is_displayed():
-                    txt = (banner.text or '').strip()
-                    self._capture_step("gsmx_success_banner", txt)
-                    return "Success: GSM Exchange offer posted"
-            except Exception:
-                pass
-            # Generic success text
-            if any(k in page for k in ["offer created", "new offer", "offer posted", "successfully", "thank you", "your offer", "offer has been"]):
-                # Try to verify in My Offers for confirmation
-                if self._verify_gsmx_listing(row):
-                    return "Success: GSM Exchange offer posted and verified"
+            page_text = driver.page_source.lower()
+            
+            if any(keyword in page_text for keyword in ["success", "offer created", "offer posted", "thank you"]):
+                self._capture_step("gsmx_success", "GSM Exchange offer posted successfully")
                 return "Success: GSM Exchange offer posted"
-            # Error sniffing with inline details
-            if any(k in page for k in ["invalid", "required", "please", "error", "missing", "select model", "select a model"]):
-                details = self._read_inline_errors()
-                self._capture_step("gsmx_error", f"Form error: {details}")
+            elif any(keyword in page_text for keyword in ["error", "required", "invalid", "please fill"]):
+                self._capture_step("gsmx_error", "Form submission error")
                 return "Error: Form submission failed - check required fields"
-            # As a final step, try verifying in My Offers even without an explicit success banner
-            if self._verify_gsmx_listing(row):
-                return "Success: GSM Exchange offer posted (verified)"
-            return "Pending: Submitted offer; waiting for confirmation"
+            else:
+                return "Pending: Submitted offer; waiting for confirmation"
             
         except TimeoutException:
             return "Timeout posting listing"
@@ -3940,57 +3412,53 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
     LOGIN_URL = "https://kadorf.com/login"
 
     def login_with_2fa(self) -> bool:
-        """Kadorf login using concrete selectors provided (#email, #password, .y-button)."""
+        """Kadorf simple login - replicate Cellpex's direct approach."""
         driver = self.driver
+        driver.get(self.LOGIN_URL)
+        self._capture_step("kadorf_login_page", f"Opened login page: {self.LOGIN_URL}")
         wait = WebDriverWait(driver, 20)
+        
         try:
-            driver.get(self.LOGIN_URL)
-            self._capture_step("kadorf_login_page", f"Opened login page: {self.LOGIN_URL}")
-            # Fill email / password
-            try:
-                email = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#email, input[name='email']")))
-                email.clear(); email.send_keys(self.username)
-            except Exception:
-                pass
-            try:
-                pwd = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#password, input[name='password']")))
-                pwd.clear(); pwd.send_keys(self.password)
-            except Exception:
-                pass
+            print(f"🔐 Logging into {self.PLATFORM}...")
+            
+            # Kadorf-specific selectors (like Cellpex directness)
+            email_field = wait.until(EC.presence_of_element_located((By.ID, "email")))
+            email_field.clear()
+            email_field.send_keys(self.username)
+            
+            password_field = wait.until(EC.presence_of_element_located((By.ID, "password")))
+            password_field.clear()
+            password_field.send_keys(self.password)
             self._capture_step("kadorf_login_filled", "Filled Kadorf credentials")
-            # Submit
-            submitted = False
-            for by, sel in [
-                (By.CSS_SELECTOR, "input[type='submit'].y-button"),
-                (By.CSS_SELECTOR, "input[type='submit']"),
-                (By.CSS_SELECTOR, "button[type='submit']"),
-                (By.XPATH, "//input[@type='submit' and contains(@class,'y-button')]|//input[@type='submit']|//button[@type='submit']")
-            ]:
-                try:
-                    btn = driver.find_element(by, sel)
-                    driver.execute_script("arguments[0].click();", btn)
-                    submitted = True
-                    break
-                except Exception:
-                    continue
-            if not submitted:
-                try:
-                    pwd.send_keys("\n")
-                except Exception:
-                    pass
-            self._capture_step("kadorf_login_submitted", "Submitted Kadorf login form")
-            time.sleep(2)
-            # Success if not back on login page
-            page_l = (driver.page_source or '').lower()
-            if "login" not in (driver.current_url or '').lower() and not ("/login" in (driver.current_url or '').lower()):
-                self._capture_step("kadorf_login_success", "Logged in to Kadorf")
-                return True
-            # Fallback: treat presence of account/panel words as success
-            if any(k in page_l for k in ["panel", "account", "dashboard", "inventory", "postoffer", "sell"]):
-                self._capture_step("kadorf_login_success", "Likely logged in (heuristic)")
-                return True
+            
+            # Submit login
+            submit = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "input[type='submit'].y-button")))
+            submit.click()
+            self._capture_step("kadorf_login_submitted", "Submitted Kadorf login")
+            
+            # Wait for potential redirect
+            time.sleep(3)
+            
+            # Check if login successful (like Cellpex approach)
+            current_url = driver.current_url
+            if "login" not in current_url:
+                if self._check_login_success():
+                    print(f"✅ Logged into {self.PLATFORM} successfully")
+                    self._capture_step("kadorf_login_success", "Logged in to Kadorf")
+                    return True
+                else:
+                    print(f"❌ Login failed for {self.PLATFORM}")
+                    return False
+            else:
+                print(f"❌ Still on login page for {self.PLATFORM}")
+                return False
+                
+        except TimeoutException:
+            print(f"❌ Login timeout for {self.PLATFORM}")
+            self._capture_step("kadorf_login_timeout", "Login timeout")
             return False
         except Exception as e:
+            print(f"❌ Login error for {self.PLATFORM}: {e}")
             self._capture_step("kadorf_login_error", f"{e}")
             return False
 
@@ -4031,155 +3499,129 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
         return False
 
     def post_listing(self, row):
+        """Post listing to Kadorf - direct approach like Cellpex."""
         driver = self.driver
         wait = WebDriverWait(driver, 20)
+        
         try:
-            # Navigate to posting page
-            try:
-                driver.get("https://kadorf.com/sell")
-            except Exception:
-                try:
-                    driver.get("https://kadorf.com/postoffer")
-                except Exception:
-                    pass
-            time.sleep(2)
-            self._capture_step("kadorf_post_page", "Opened Kadorf post offer page")
+            # Navigate directly to the posting page (like Cellpex does)
+            print("📍 Navigating to Kadorf Sell page...")
+            driver.get("https://kadorf.com/sell")
+            self._capture_step("kadorf_sell_page", "Opened Kadorf sell page")
+            
+            # Wait for form to load
+            time.sleep(3)
+            
+            # Fill form fields based on Kadorf selectors (like Cellpex approach)
+            print("📝 Filling Kadorf listing form...")
 
+            
             # Category
             try:
-                cat_value = str(row.get("category") or row.get("product_type") or "Mobile Phones")
-                sel = None
-                for loc in [(By.ID, "category"), (By.NAME, "category")] :
-                    try:
-                        sel = driver.find_element(*loc)
-                        break
-                    except Exception:
-                        continue
-                if sel:
-                    ok = False
-                    try:
-                        Select(sel).select_by_visible_text(cat_value)
-                        ok = True
-                    except Exception:
-                        ok = self._select_relaxed(sel, [cat_value, "Mobile Phones", "Phones", "Mobile"])
-                    if ok:
-                        try:
-                            driver.execute_script("arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", sel)
-                        except Exception:
-                            pass
-                        self._capture_step("kadorf_category", f"Category: {cat_value}")
+                category = str(row.get("category") or row.get("product_type") or "Mobile Phones")
+                category_select = Select(wait.until(EC.presence_of_element_located((By.NAME, "category"))))
+                category_select.select_by_visible_text(category)
+                self._capture_step("kadorf_category_filled", f"Category: {category}")
             except Exception:
                 pass
-
+            
             # Condition
             try:
-                cond_in = str(row.get("condition", "New"))
-                cond_sel = driver.find_element(By.NAME, "condition")
-                try:
-                    Select(cond_sel).select_by_visible_text(cond_in)
-                except Exception:
-                    self._select_relaxed(cond_sel, [cond_in, "New", "Used", "Refurbished"])
-                self._capture_step("kadorf_condition", f"Condition: {cond_in}")
+                condition = str(row.get("condition", "New"))
+                condition_select = Select(driver.find_element(By.NAME, "condition"))
+                condition_select.select_by_visible_text(condition)
+                self._capture_step("kadorf_condition_filled", f"Condition: {condition}")
             except Exception:
                 pass
-
+            
             # Currency
             try:
                 currency = str(row.get("currency", "USD")).upper()
-                cur_sel = driver.find_element(By.NAME, "currency")
-                try:
-                    Select(cur_sel).select_by_visible_text(currency)
-                except Exception:
-                    self._select_relaxed(cur_sel, [currency, "USD", "EUR", "GBP"]) 
-                self._capture_step("kadorf_currency", f"Currency: {currency}")
+                currency_select = Select(driver.find_element(By.NAME, "currency"))
+                currency_select.select_by_visible_text(currency)
+                self._capture_step("kadorf_currency_filled", f"Currency: {currency}")
             except Exception:
                 pass
-
-            # Location (optional)
+            
+            # Location
             try:
-                loc_val = (str(row.get("state") or row.get("country") or "").strip())
-                if loc_val:
-                    loc_input = driver.find_element(By.ID, "location")
-                    loc_input.clear(); loc_input.send_keys(loc_val)
-                    self._capture_step("kadorf_location", f"Location: {loc_val}")
+                location = str(row.get("state") or row.get("country") or "").strip()
+                if location:
+                    location_field = driver.find_element(By.ID, "location")
+                    location_field.clear()
+                    location_field.send_keys(location)
+                    self._capture_step("kadorf_location_filled", f"Location: {location}")
             except Exception:
                 pass
-
-            # Item fields
+            
+            # Product details
             try:
-                qty = str(row.get("quantity", "1"))
-                brand = str(row.get("brand", "")).strip()
-                model = str(row.get("product_name") or row.get("model") or row.get("model_code") or "").strip()
+                quantity = str(row.get("quantity", "1"))
+                brand = str(row.get("brand", ""))
+                model = str(row.get("product_name") or row.get("model") or row.get("model_code") or "")
                 price = str(row.get("price", ""))
-                details = row.get("description") or (f"{row.get('memory','')} {row.get('color','')}".strip())
-
-                def find_by_name(n: str):
-                    try:
-                        return driver.find_element(By.NAME, n)
-                    except Exception:
-                        return None
-
-                q = find_by_name("product[1][quantity]"); b = find_by_name("product[1][brand]"); m = find_by_name("product[1][model]"); p = find_by_name("product[1][price]"); d = find_by_name("product[1][details]")
-                if q: q.clear(); q.send_keys(qty)
-                if b: b.clear(); b.send_keys(brand)
-                if m: m.clear(); m.send_keys(model)
-                if p: 
-                    digits = ''.join(ch for ch in price if (ch.isdigit()))
-                    p.clear(); p.send_keys(digits)
-                if d and details:
-                    d.clear(); d.send_keys(str(details)[:150])
-                self._capture_step("kadorf_item_filled", f"{brand} {model} x{qty} @ {price}")
+                details = row.get("description") or f"{row.get('memory','')} {row.get('color','')}".strip()
+                
+                # Fill product fields
+                qty_field = driver.find_element(By.NAME, "product[1][quantity]")
+                qty_field.clear()
+                qty_field.send_keys(quantity)
+                
+                brand_field = driver.find_element(By.NAME, "product[1][brand]")
+                brand_field.clear()
+                brand_field.send_keys(brand)
+                
+                model_field = driver.find_element(By.NAME, "product[1][model]")
+                model_field.clear()
+                model_field.send_keys(model)
+                
+                price_field = driver.find_element(By.NAME, "product[1][price]")
+                price_field.clear()
+                # Extract digits only for price
+                digits = ''.join(ch for ch in price if ch.isdigit())
+                price_field.send_keys(digits)
+                
+                if details:
+                    details_field = driver.find_element(By.NAME, "product[1][details]")
+                    details_field.clear()
+                    details_field.send_keys(str(details)[:150])
+                
+                self._capture_step("kadorf_product_filled", f"{brand} {model} x{quantity} @ {digits}")
             except Exception:
                 pass
-
-            # Submit
-            submitted = False
+            
+            # Submit the form
             try:
-                for by, sel in [
-                    (By.CSS_SELECTOR, "input[type='submit'].y-button"),
-                    (By.CSS_SELECTOR, "input[type='submit']"),
-                    (By.XPATH, "//input[@type='submit' and (contains(@value,'Post') or contains(@class,'y-button'))]")
-                ]:
-                    try:
-                        btn = driver.find_element(by, sel)
-                        driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", btn)
-                        time.sleep(0.2)
-                        driver.execute_script("arguments[0].click();", btn)
-                        submitted = True
-                        break
-                    except Exception:
-                        continue
+                submit_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "input[type='submit'].y-button")))
+                submit_btn.click()
+                self._capture_step("kadorf_submitted", "Submitted Kadorf offer")
             except Exception:
-                submitted = False
-
-            if not submitted:
-                # Fallback: submit form
                 try:
-                    frm = driver.find_element(By.ID, "postoffer")
-                    driver.execute_script("arguments[0].requestSubmit ? arguments[0].requestSubmit() : arguments[0].submit();", frm)
-                    submitted = True
+                    # Fallback: try form submission
+                    form = driver.find_element(By.ID, "postoffer")
+                    driver.execute_script("arguments[0].submit();", form)
+                    self._capture_step("kadorf_form_submitted", "Submitted via form")
                 except Exception:
-                    pass
-
-            if not submitted:
-                self._capture_step("kadorf_no_submit", "Submit control not found")
-                return "Error: Could not submit Kadorf form"
-
-            time.sleep(3)
-            page_l = (driver.page_source or '').lower()
-            # Basic success/error heuristics
-            if any(k in page_l for k in ["thank you", "submitted", "success", "offer posted", "saved"]):
-                self._capture_step("kadorf_success", "Offer submitted")
-                return "Success: Kadorf offer submitted"
-            if any(k in page_l for k in ["error", "required", "invalid", "please select", "please fill"]):
-                self._capture_step("kadorf_error", "Inline error detected")
+                    return "Error: Could not submit Kadorf form"
+            
+            # Wait for response and check for success
+            time.sleep(4)
+            page_text = driver.page_source.lower()
+            
+            if any(keyword in page_text for keyword in ["success", "thank you", "submitted", "offer posted"]):
+                self._capture_step("kadorf_success", "Kadorf offer posted successfully")
+                return "Success: Kadorf offer posted"
+            elif any(keyword in page_text for keyword in ["error", "required", "invalid", "please fill"]):
+                self._capture_step("kadorf_error", "Form submission error")
                 return "Error: Form submission failed - check required fields"
-            # Default optimistic result
-            self._capture_step("kadorf_posted", "Submitted without explicit banner")
-            return "Pending: Submitted offer; waiting for confirmation"
+            else:
+                return "Pending: Submitted offer; waiting for confirmation"
+            
+        except TimeoutException:
+            return "Timeout posting listing"
         except Exception as e:
             self._capture_step("kadorf_exception", str(e))
-            return f"Error: {e}"
+            return f"Error: {str(e)}"
 
 
 # Register
