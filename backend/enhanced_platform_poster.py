@@ -612,38 +612,105 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             return False
 
     def login_with_2fa(self) -> bool:
-        """GSM Exchange simple login - replicate Cellpex's direct approach."""
+        """GSM Exchange robust login with improved selectors and timeout handling."""
         driver = self.driver
         driver.get(self.LOGIN_URL)
         self._capture_step("gsmx_login_page", f"Opened login page: {self.LOGIN_URL}")
-        wait = WebDriverWait(driver, 20)
+        wait = WebDriverWait(driver, 30)  # Increased timeout for slow loading
         
         try:
             print(f"🔐 Logging into {self.PLATFORM}...")
             
-            # GSM Exchange specific selectors (mimic Cellpex directness)
-            user_field = wait.until(EC.presence_of_element_located(
-                (By.CSS_SELECTOR, "input[name='email'], input[type='email'], input[name='username']")
-            ))
+            # Wait for page to fully load
+            time.sleep(3)
+            
+            # Try multiple username selectors (from test file)
+            username_selectors = [
+                "input[name='email']",
+                "input[name='username']", 
+                "input[type='email']",
+                "input[placeholder*='email']",
+                "input[placeholder*='username']",
+                "#email",
+                "#username"
+            ]
+            
+            user_field = None
+            for selector in username_selectors:
+                try:
+                    user_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                    print(f"✅ Found username field: {selector}")
+                    break
+                except TimeoutException:
+                    continue
+            
+            if not user_field:
+                print("❌ Could not find username field with any selector")
+                self._capture_step("gsmx_no_username_field", "Username field not found")
+                return False
+                
             user_field.clear()
             user_field.send_keys(self.username)
+            print("✅ Username entered")
             
-            pass_field = wait.until(EC.presence_of_element_located(
-                (By.CSS_SELECTOR, "input[name='password'], input[type='password']")
-            ))
+            # Try multiple password selectors
+            password_selectors = [
+                "input[name='password']",
+                "input[type='password']",
+                "#password"
+            ]
+            
+            pass_field = None
+            for selector in password_selectors:
+                try:
+                    pass_field = driver.find_element(By.CSS_SELECTOR, selector)
+                    print(f"✅ Found password field: {selector}")
+                    break
+                except:
+                    continue
+            
+            if not pass_field:
+                print("❌ Could not find password field")
+                self._capture_step("gsmx_no_password_field", "Password field not found")
+                return False
+                
             pass_field.clear()
             pass_field.send_keys(self.password)
+            print("✅ Password entered")
             self._capture_step("gsmx_login_filled", "Filled GSM Exchange credentials")
             
-            # Submit login
-            submit = wait.until(EC.element_to_be_clickable(
-                (By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")
-            ))
-            submit.click()
+            # Try multiple submit selectors
+            submit_selectors = [
+                "button[type='submit']",
+                "input[type='submit']", 
+                "[onclick*='login']",
+                "[onclick*='signin']"
+            ]
+            
+            submitted = False
+            for selector in submit_selectors:
+                try:
+                    submit = driver.find_element(By.CSS_SELECTOR, selector)
+                    submit.click()
+                    submitted = True
+                    print(f"✅ Form submitted using: {selector}")
+                    break
+                except:
+                    continue
+            
+            if not submitted:
+                # Try Enter key as fallback
+                pass_field.send_keys("\n")
+                print("✅ Form submitted using Enter key")
+            
             self._capture_step("gsmx_login_submitted", "Submitted GSM Exchange login")
             
             # Wait for potential redirect
-            time.sleep(3)
+            time.sleep(5)
+            
+            # Check current URL and page state
+            current_url = driver.current_url
+            print(f"📍 Current URL after login: {current_url}")
             
             # Check for 2FA
             page_text = driver.page_source.lower()
@@ -663,15 +730,16 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                     return True
                 else:
                     print(f"❌ Login failed for {self.PLATFORM}")
+                    print(f"⚠️  Current URL: {current_url}")
                     return False
                 
-        except TimeoutException:
-            print(f"❌ Login timeout for {self.PLATFORM}")
-            self._capture_step("gsmx_login_timeout", "Login timeout")
+        except TimeoutException as e:
+            print(f"❌ Login timeout for {self.PLATFORM}: {e}")
+            self._capture_step("gsmx_login_timeout", f"Login timeout: {e}")
             return False
         except Exception as e:
             print(f"❌ Login error for {self.PLATFORM}: {e}")
-            self._capture_step("gsmx_login_error", f"{e}")
+            self._capture_step("gsmx_login_error", f"Login error: {e}")
             return False
 
     def _handle_gsmx_2fa(self) -> bool:
@@ -3499,70 +3567,54 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
         return False
 
     def post_listing(self, row):
-        """Post listing to Kadorf - direct approach like Cellpex."""
+        """Post listing to Kadorf - optimized for speed."""
         driver = self.driver
-        wait = WebDriverWait(driver, 20)
+        wait = WebDriverWait(driver, 15)  # Reduced timeout for speed
         
         try:
-            # Navigate directly to the posting page (like Cellpex does)
+            # Navigate directly to the posting page
             print("📍 Navigating to Kadorf Sell page...")
             driver.get("https://kadorf.com/sell")
             self._capture_step("kadorf_sell_page", "Opened Kadorf sell page")
             
-            # Wait for form to load
-            time.sleep(3)
+            # Reduced wait for form to load
+            time.sleep(1.5)
             
-            # Fill form fields based on Kadorf selectors (like Cellpex approach)
-            print("📝 Filling Kadorf listing form...")
-
+            print("📝 Filling Kadorf listing form (fast mode)...")
             
-            # Category
+            # Pre-extract all values to avoid repeated lookups
+            category = str(row.get("category") or row.get("product_type") or "Mobile Phones")
+            condition = str(row.get("condition", "New"))
+            currency = str(row.get("currency", "USD")).upper()
+            location = str(row.get("state") or row.get("country") or "").strip()
+            quantity = str(row.get("quantity", "1"))
+            brand = str(row.get("brand", ""))
+            model = str(row.get("product_name") or row.get("model") or row.get("model_code") or "")
+            price = str(row.get("price", ""))
+            digits = ''.join(ch for ch in price if ch.isdigit())
+            details = row.get("description") or f"{row.get('memory','')} {row.get('color','')}".strip()
+            
+            # Batch fill all form fields quickly
             try:
-                category = str(row.get("category") or row.get("product_type") or "Mobile Phones")
+                # Category (required)
                 category_select = Select(wait.until(EC.presence_of_element_located((By.NAME, "category"))))
                 category_select.select_by_visible_text(category)
-                self._capture_step("kadorf_category_filled", f"Category: {category}")
-            except Exception:
-                pass
-            
-            # Condition
-            try:
-                condition = str(row.get("condition", "New"))
+                
+                # Condition (required)
                 condition_select = Select(driver.find_element(By.NAME, "condition"))
                 condition_select.select_by_visible_text(condition)
-                self._capture_step("kadorf_condition_filled", f"Condition: {condition}")
-            except Exception:
-                pass
-            
-            # Currency
-            try:
-                currency = str(row.get("currency", "USD")).upper()
+                
+                # Currency (required)
                 currency_select = Select(driver.find_element(By.NAME, "currency"))
                 currency_select.select_by_visible_text(currency)
-                self._capture_step("kadorf_currency_filled", f"Currency: {currency}")
-            except Exception:
-                pass
-            
-            # Location
-            try:
-                location = str(row.get("state") or row.get("country") or "").strip()
+                
+                # Location (optional but quick)
                 if location:
                     location_field = driver.find_element(By.ID, "location")
                     location_field.clear()
                     location_field.send_keys(location)
-                    self._capture_step("kadorf_location_filled", f"Location: {location}")
-            except Exception:
-                pass
-            
-            # Product details
-            try:
-                quantity = str(row.get("quantity", "1"))
-                brand = str(row.get("brand", ""))
-                model = str(row.get("product_name") or row.get("model") or row.get("model_code") or "")
-                price = str(row.get("price", ""))
-                details = row.get("description") or f"{row.get('memory','')} {row.get('color','')}".strip()
                 
-                # Fill product fields
+                # Product fields (required)
                 qty_field = driver.find_element(By.NAME, "product[1][quantity]")
                 qty_field.clear()
                 qty_field.send_keys(quantity)
@@ -3577,49 +3629,59 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
                 
                 price_field = driver.find_element(By.NAME, "product[1][price]")
                 price_field.clear()
-                # Extract digits only for price
-                digits = ''.join(ch for ch in price if ch.isdigit())
                 price_field.send_keys(digits)
                 
+                # Details (optional, quick)
                 if details:
                     details_field = driver.find_element(By.NAME, "product[1][details]")
                     details_field.clear()
                     details_field.send_keys(str(details)[:150])
                 
+                print(f"✅ Form filled: {brand} {model} x{quantity} @ {digits} {currency}")
                 self._capture_step("kadorf_product_filled", f"{brand} {model} x{quantity} @ {digits}")
-            except Exception:
-                pass
+                
+            except Exception as e:
+                print(f"⚠️  Form filling error: {e}")
+                # Continue to try submission anyway
             
-            # Submit the form
+            # Quick submit attempt
             try:
                 submit_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "input[type='submit'].y-button")))
                 submit_btn.click()
+                print("✅ Form submitted via submit button")
                 self._capture_step("kadorf_submitted", "Submitted Kadorf offer")
             except Exception:
                 try:
-                    # Fallback: try form submission
+                    # Fast fallback: direct form submission
                     form = driver.find_element(By.ID, "postoffer")
                     driver.execute_script("arguments[0].submit();", form)
-                    self._capture_step("kadorf_form_submitted", "Submitted via form")
-                except Exception:
+                    print("✅ Form submitted via JavaScript")
+                    self._capture_step("kadorf_form_submitted", "Submitted via form JS")
+                except Exception as e:
+                    print(f"❌ Submit failed: {e}")
                     return "Error: Could not submit Kadorf form"
             
-            # Wait for response and check for success
-            time.sleep(4)
+            # Quick response check (reduced wait)
+            time.sleep(2)
             page_text = driver.page_source.lower()
             
             if any(keyword in page_text for keyword in ["success", "thank you", "submitted", "offer posted"]):
+                print("🎉 Kadorf posting successful")
                 self._capture_step("kadorf_success", "Kadorf offer posted successfully")
                 return "Success: Kadorf offer posted"
             elif any(keyword in page_text for keyword in ["error", "required", "invalid", "please fill"]):
+                print("❌ Kadorf form errors detected")
                 self._capture_step("kadorf_error", "Form submission error")
                 return "Error: Form submission failed - check required fields"
             else:
+                print("⏳ Kadorf posting pending")
                 return "Pending: Submitted offer; waiting for confirmation"
             
-        except TimeoutException:
+        except TimeoutException as e:
+            print(f"⏰ Kadorf timeout: {e}")
             return "Timeout posting listing"
         except Exception as e:
+            print(f"❌ Kadorf error: {e}")
             self._capture_step("kadorf_exception", str(e))
             return f"Error: {str(e)}"
 

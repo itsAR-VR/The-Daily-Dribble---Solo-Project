@@ -24,7 +24,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
     const body = await req.text()
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 60000)
+    const timeout = setTimeout(() => controller.abort(), 120000) // Extended to 120s for slow operations
     try {
         let lastErr: any = null
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -91,7 +91,7 @@ export async function PUT(req: NextRequest) {
     // Start background job upstream
     const body = await req.text()
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 60000)
+    const timeout = setTimeout(() => controller.abort(), 120000) // Extended to 120s for slow operations
     try {
         const res = await fetch(`${API_BASE_URL}/listings/enhanced-visual/start`, {
             method: "POST",
