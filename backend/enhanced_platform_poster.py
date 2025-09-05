@@ -148,7 +148,7 @@ class Enhanced2FAMarketplacePoster:
             # Submit login (avoid invalid :contains CSS; CSS first, then XPath fallbacks)
             try:
                 submit = driver.find_element(By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")
-                submit.click()
+            submit.click()
             except Exception:
                 try:
                     submit = driver.find_element(By.XPATH, "//button[@type='submit'] | //input[@type='submit'] | //button[contains(.,'Login') or contains(.,'Sign in') or contains(.,'Sign In')] | //a[contains(.,'Login') or contains(.,'Sign in') or contains(.,'Sign In')]")
@@ -438,7 +438,7 @@ class Enhanced2FAMarketplacePoster:
                         print("✅ Submitted 2FA code")
                         break
                     except Exception:
-                        continue
+                    continue
             
             # If no submit button found, try Enter key
             if not submitted:
@@ -616,13 +616,14 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
         driver = self.driver
         driver.get(self.LOGIN_URL)
         self._capture_step("gsmx_login_page", f"Opened login page: {self.LOGIN_URL}")
-        wait = WebDriverWait(driver, 30)  # Increased timeout for slow loading
+        wait = WebDriverWait(driver, 30)
         
         try:
             print(f"🔐 Logging into {self.PLATFORM}...")
             
             # Wait for page to fully load
             time.sleep(3)
+            self._dismiss_gsmx_popups()
             
             # Try multiple username selectors (from test file)
             username_selectors = [
@@ -648,7 +649,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 print("❌ Could not find username field with any selector")
                 self._capture_step("gsmx_no_username_field", "Username field not found")
                 return False
-                
+            
             user_field.clear()
             user_field.send_keys(self.username)
             print("✅ Username entered")
@@ -666,14 +667,14 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                     pass_field = driver.find_element(By.CSS_SELECTOR, selector)
                     print(f"✅ Found password field: {selector}")
                     break
-                except:
+                except Exception:
                     continue
             
             if not pass_field:
                 print("❌ Could not find password field")
                 self._capture_step("gsmx_no_password_field", "Password field not found")
                 return False
-                
+            
             pass_field.clear()
             pass_field.send_keys(self.password)
             print("✅ Password entered")
@@ -695,13 +696,16 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                     submitted = True
                     print(f"✅ Form submitted using: {selector}")
                     break
-                except:
+                except Exception:
                     continue
             
             if not submitted:
                 # Try Enter key as fallback
-                pass_field.send_keys("\n")
-                print("✅ Form submitted using Enter key")
+                try:
+                    pass_field.send_keys("\n")
+                    print("✅ Form submitted using Enter key")
+                except Exception:
+                    pass
             
             self._capture_step("gsmx_login_submitted", "Submitted GSM Exchange login")
             
@@ -1614,15 +1618,15 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             # Product/Model name
             try:
                 product_name = str(row.get("product_name") or row.get("model") or row.get("model_code") or "").strip()
-                brand = str(row.get("brand", "")).strip()
+                        brand = str(row.get("brand", "")).strip()
                 query = f"{brand} {product_name}".strip() if brand else product_name
                 
                 model_input = wait.until(EC.presence_of_element_located((By.NAME, "phModelFull")))
                 model_input.clear()
                 model_input.send_keys(query)
                 self._capture_step("gsmx_model_filled", f"Model: {query}")
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
             # Quantity
             try:
@@ -1686,7 +1690,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 submit_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")))
                 submit_btn.click()
                 self._capture_step("gsmx_submitted", "Submitted GSM Exchange offer")
-            except Exception:
+                    except Exception:
                 return "Error: Could not submit GSM Exchange offer"
 
             # Wait for response and check for success
@@ -1695,12 +1699,12 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             
             if any(keyword in page_text for keyword in ["success", "offer created", "offer posted", "thank you"]):
                 self._capture_step("gsmx_success", "GSM Exchange offer posted successfully")
-                return "Success: GSM Exchange offer posted"
+                    return "Success: GSM Exchange offer posted"
             elif any(keyword in page_text for keyword in ["error", "required", "invalid", "please fill"]):
                 self._capture_step("gsmx_error", "Form submission error")
                 return "Error: Form submission failed - check required fields"
             else:
-                return "Pending: Submitted offer; waiting for confirmation"
+            return "Pending: Submitted offer; waiting for confirmation"
             
         except TimeoutException:
             return "Timeout posting listing"
@@ -3596,9 +3600,43 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
             
             # Batch fill all form fields quickly
             try:
-                # Category (required)
-                category_select = Select(wait.until(EC.presence_of_element_located((By.NAME, "category"))))
-                category_select.select_by_visible_text(category)
+                # Category (required) with relaxed fallback
+                category_el = wait.until(EC.presence_of_element_located((By.NAME, "category")))
+                try:
+                    Select(category_el).select_by_visible_text(category)
+                except Exception:
+                    # Fallback: relaxed match or first non-placeholder
+                    self._select_relaxed(category_el, [category, "Mobile Phones", "Phones", "Mobiles"]) or (
+                        Select(category_el).select_by_index(1)
+                    )
+                # Subcategory becomes available after category selection; pick first available
+                try:
+                    subcat_el = None
+                    for loc in [(By.ID, "subcategory"), (By.NAME, "subcategory")]:
+                        try:
+                            subcat_el = WebDriverWait(driver, 8).until(EC.presence_of_element_located(loc))
+                            break
+                        except Exception:
+                            continue
+                    if subcat_el:
+                        try:
+                            sub_dd = Select(subcat_el)
+                            # choose first non-disabled, non-placeholder option
+                            idx = 1
+                            opts = sub_dd.options
+                            for i, o in enumerate(opts):
+                                if i == 0:
+                                    continue
+                                if o.get_attribute("disabled"):
+                                    continue
+                                if (o.text or "").strip():
+                                    idx = i
+                                    break
+                            sub_dd.select_by_index(idx)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
                 
                 # Condition (required)
                 condition_select = Select(driver.find_element(By.NAME, "condition"))
@@ -3646,15 +3684,42 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
             
             # Quick submit attempt
             try:
-                submit_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "input[type='submit'].y-button")))
-                submit_btn.click()
+                submit_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "input[type='submit'].y-button, button[type='submit'], input[type='submit']")))
+                driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", submit_btn)
+                time.sleep(0.1)
+                try:
+                    driver.execute_script("if(window.setFormSubmitting){try{setFormSubmitting()}catch(e){}}")
+                except Exception:
+                    pass
+                try:
+                    submit_btn.click()
+                except Exception:
+                    # Fallback: submit via form, honoring onsubmit when possible
+                    try:
+                        form = driver.find_element(By.ID, "postoffer")
+                    except Exception:
+                        form = None
+                    if form:
+                        try:
+                            driver.execute_script(
+                                "if(window.setFormSubmitting){try{setFormSubmitting()}catch(e){}};"
+                                "if(arguments[0].requestSubmit){arguments[0].requestSubmit()}else{arguments[0].submit()}",
+                                form
+                            )
+                        except Exception as _:
+                            raise
                 print("✅ Form submitted via submit button")
                 self._capture_step("kadorf_submitted", "Submitted Kadorf offer")
             except Exception:
                 try:
                     # Fast fallback: direct form submission
                     form = driver.find_element(By.ID, "postoffer")
-                    driver.execute_script("arguments[0].submit();", form)
+                    driver.execute_script(
+                        "if(window.setFormSubmitting){try{setFormSubmitting()}catch(e){}};"
+                        "if(arguments[0].reportValidity && !arguments[0].reportValidity()){return false;}"
+                        "if(arguments[0].requestSubmit){arguments[0].requestSubmit()}else{arguments[0].submit()}",
+                        form
+                    )
                     print("✅ Form submitted via JavaScript")
                     self._capture_step("kadorf_form_submitted", "Submitted via form JS")
                 except Exception as e:
