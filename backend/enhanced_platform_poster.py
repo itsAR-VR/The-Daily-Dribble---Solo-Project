@@ -3479,7 +3479,12 @@ ENHANCED_POSTERS = {
 
 
 class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
-    """Kadorf/Kardof poster using fast, Cellpex-like direct form fill."""
+    """Kadorf/Kardof poster using fast, Cellpex-like direct form fill.
+
+    - Optimizes for speed by reducing waits and batching field updates
+    - Uses relaxed dropdown matching and resilient submit methods
+    - Keeps anti-hallucination: only report success when page indicates it
+    """
     PLATFORM = "KARDOF"
     LOGIN_URL = "https://kadorf.com/login"
 
@@ -3535,6 +3540,7 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
             return False
 
     def _select_relaxed(self, select_el, candidates: list[str]) -> bool:
+        """Select <option> using relaxed matching (exact, contains, startswith)."""
         try:
             dd = Select(select_el)
             opts = dd.options
@@ -3570,8 +3576,109 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
             pass
         return False
 
+    def _fill_kadorf_form(self, row, wait) -> bool:
+        """Fill Kadorf sell form fields quickly with relaxed fallbacks."""
+        driver = self.driver
+        try:
+            # Pre-extract values
+            category = str(row.get("category") or row.get("product_type") or "Mobile Phones")
+            condition = str(row.get("condition", "New"))
+            currency = str(row.get("currency", "USD")).upper()
+            location = str(row.get("state") or row.get("country") or "").strip()
+            quantity = str(row.get("quantity", "1"))
+            brand = str(row.get("brand", ""))
+            model = str(row.get("product_name") or row.get("model") or row.get("model_code") or "")
+            price = str(row.get("price", ""))
+            digits = ''.join(ch for ch in price if ch.isdigit())
+            details = row.get("description") or f"{row.get('memory','')} {row.get('color','')}".strip()
+
+            # Category (required) with relaxed fallback
+            category_el = wait.until(EC.presence_of_element_located((By.NAME, "category")))
+            try:
+                Select(category_el).select_by_visible_text(category)
+            except Exception:
+                # Fallback: relaxed match or first non-placeholder
+                self._select_relaxed(category_el, [category, "Mobile Phones", "Phones", "Mobiles"]) or (
+                    Select(category_el).select_by_index(1)
+                )
+            # Subcategory becomes available after category selection; pick first available
+            try:
+                subcat_el = None
+                for loc in [(By.ID, "subcategory"), (By.NAME, "subcategory")]:
+                    try:
+                        subcat_el = WebDriverWait(driver, 8).until(EC.presence_of_element_located(loc))
+                        break
+                    except Exception:
+                        continue
+                if subcat_el:
+                    try:
+                        sub_dd = Select(subcat_el)
+                        # choose first non-disabled, non-placeholder option
+                        idx = 1
+                        opts = sub_dd.options
+                        for i, o in enumerate(opts):
+                            if i == 0:
+                                continue
+                            if o.get_attribute("disabled"):
+                                continue
+                            if (o.text or "").strip():
+                                idx = i
+                                break
+                        sub_dd.select_by_index(idx)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # Condition (required)
+            condition_select = Select(driver.find_element(By.NAME, "condition"))
+            condition_select.select_by_visible_text(condition)
+
+            # Currency (required)
+            currency_select = Select(driver.find_element(By.NAME, "currency"))
+            currency_select.select_by_visible_text(currency)
+
+            # Location (optional)
+            if location:
+                location_field = driver.find_element(By.ID, "location")
+                location_field.clear()
+                location_field.send_keys(location)
+
+            # Product fields (required)
+            qty_field = driver.find_element(By.NAME, "product[1][quantity]")
+            qty_field.clear()
+            qty_field.send_keys(quantity)
+
+            brand_field = driver.find_element(By.NAME, "product[1][brand]")
+            brand_field.clear()
+            brand_field.send_keys(brand)
+
+            model_field = driver.find_element(By.NAME, "product[1][model]")
+            model_field.clear()
+            model_field.send_keys(model)
+
+            price_field = driver.find_element(By.NAME, "product[1][price]")
+            price_field.clear()
+            price_field.send_keys(digits)
+
+            # Details (optional)
+            if details:
+                details_field = driver.find_element(By.NAME, "product[1][details]")
+                details_field.clear()
+                details_field.send_keys(str(details)[:150])
+
+            print(f"✅ Form filled: {brand} {model} x{quantity} @ {digits} {currency}")
+            self._capture_step("kadorf_product_filled", f"{brand} {model} x{quantity} @ {digits}")
+            return True
+        except Exception as e:
+            print(f"⚠️  Form filling error: {e}")
+            return False
+
     def post_listing(self, row):
-        """Post listing to Kadorf - optimized for speed."""
+        """Post listing to Kadorf - optimized and modularized.
+
+        Fills the sell form using `_fill_kadorf_form` and then submits using
+        resilient strategies; returns a high-signal status string."""
         driver = self.driver
         wait = WebDriverWait(driver, 15)  # Reduced timeout for speed
         
@@ -3586,101 +3693,11 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
             
             print("📝 Filling Kadorf listing form (fast mode)...")
             
-            # Pre-extract all values to avoid repeated lookups
-            category = str(row.get("category") or row.get("product_type") or "Mobile Phones")
-            condition = str(row.get("condition", "New"))
-            currency = str(row.get("currency", "USD")).upper()
-            location = str(row.get("state") or row.get("country") or "").strip()
-            quantity = str(row.get("quantity", "1"))
-            brand = str(row.get("brand", ""))
-            model = str(row.get("product_name") or row.get("model") or row.get("model_code") or "")
-            price = str(row.get("price", ""))
-            digits = ''.join(ch for ch in price if ch.isdigit())
-            details = row.get("description") or f"{row.get('memory','')} {row.get('color','')}".strip()
-            
-            # Batch fill all form fields quickly
-            try:
-                # Category (required) with relaxed fallback
-                category_el = wait.until(EC.presence_of_element_located((By.NAME, "category")))
-                try:
-                    Select(category_el).select_by_visible_text(category)
-                except Exception:
-                    # Fallback: relaxed match or first non-placeholder
-                    self._select_relaxed(category_el, [category, "Mobile Phones", "Phones", "Mobiles"]) or (
-                        Select(category_el).select_by_index(1)
-                    )
-                # Subcategory becomes available after category selection; pick first available
-                try:
-                    subcat_el = None
-                    for loc in [(By.ID, "subcategory"), (By.NAME, "subcategory")]:
-                        try:
-                            subcat_el = WebDriverWait(driver, 8).until(EC.presence_of_element_located(loc))
-                            break
-                        except Exception:
-                            continue
-                    if subcat_el:
-                        try:
-                            sub_dd = Select(subcat_el)
-                            # choose first non-disabled, non-placeholder option
-                            idx = 1
-                            opts = sub_dd.options
-                            for i, o in enumerate(opts):
-                                if i == 0:
-                                    continue
-                                if o.get_attribute("disabled"):
-                                    continue
-                                if (o.text or "").strip():
-                                    idx = i
-                                    break
-                            sub_dd.select_by_index(idx)
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-                
-                # Condition (required)
-                condition_select = Select(driver.find_element(By.NAME, "condition"))
-                condition_select.select_by_visible_text(condition)
-                
-                # Currency (required)
-                currency_select = Select(driver.find_element(By.NAME, "currency"))
-                currency_select.select_by_visible_text(currency)
-                
-                # Location (optional but quick)
-                if location:
-                    location_field = driver.find_element(By.ID, "location")
-                    location_field.clear()
-                    location_field.send_keys(location)
-                
-                # Product fields (required)
-                qty_field = driver.find_element(By.NAME, "product[1][quantity]")
-                qty_field.clear()
-                qty_field.send_keys(quantity)
-                
-                brand_field = driver.find_element(By.NAME, "product[1][brand]")
-                brand_field.clear()
-                brand_field.send_keys(brand)
-                
-                model_field = driver.find_element(By.NAME, "product[1][model]")
-                model_field.clear()
-                model_field.send_keys(model)
-                
-                price_field = driver.find_element(By.NAME, "product[1][price]")
-                price_field.clear()
-                price_field.send_keys(digits)
-                
-                # Details (optional, quick)
-                if details:
-                    details_field = driver.find_element(By.NAME, "product[1][details]")
-                    details_field.clear()
-                    details_field.send_keys(str(details)[:150])
-                
-                print(f"✅ Form filled: {brand} {model} x{quantity} @ {digits} {currency}")
-                self._capture_step("kadorf_product_filled", f"{brand} {model} x{quantity} @ {digits}")
-                
-            except Exception as e:
-                print(f"⚠️  Form filling error: {e}")
+            # Fill the form using helper
+            ok = self._fill_kadorf_form(row, wait)
+            if not ok:
                 # Continue to try submission anyway
+                pass
             
             # Quick submit attempt
             try:
@@ -3797,5 +3814,19 @@ def test_platform_login_with_2fa(platform_name):
 
 
 if __name__ == "__main__":
-    # Test GSM Exchange login with 2FA
+    # Smoke tests: GSM Exchange login and Kadorf page open
     test_platform_login_with_2fa('gsmexchange')
+    try:
+        print("\n🧪 Smoke: open Kadorf Sell page")
+        opts = webdriver.ChromeOptions(); opts.add_argument("--window-size=1920,1080")
+        drv = webdriver.Chrome(options=opts)
+        poster = EnhancedKardofPoster(drv)
+        drv.get("https://kadorf.com/sell"); time.sleep(1.5)
+        poster._capture_step("kadorf_sell_smoke", "Opened Kadorf sell page for smoke test")
+    except Exception as e:
+        print(f"⚠️  Kadorf smoke open error: {e}")
+    finally:
+        try:
+            drv.quit()
+        except Exception:
+            pass
