@@ -148,7 +148,7 @@ class Enhanced2FAMarketplacePoster:
             # Submit login (avoid invalid :contains CSS; CSS first, then XPath fallbacks)
             try:
                 submit = driver.find_element(By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")
-            submit.click()
+                submit.click()
             except Exception:
                 try:
                     submit = driver.find_element(By.XPATH, "//button[@type='submit'] | //input[@type='submit'] | //button[contains(.,'Login') or contains(.,'Sign in') or contains(.,'Sign In')] | //a[contains(.,'Login') or contains(.,'Sign in') or contains(.,'Sign In')]")
