@@ -1,4 +1,4 @@
----
+ ---
 description: Use this rule when you need to update the project’s CHANGELOG.md by adding a new version, change type and description in the Keep‑a‑Changelog format
 alwaysApply: false
 ---

@@ -5,7 +5,9 @@ Enhanced platform poster with Gmail 2FA integration and optional step-by-step sc
 
 import time
 import base64
+import re
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 import os
 from dotenv import load_dotenv
 from selenium import webdriver
@@ -438,7 +440,7 @@ class Enhanced2FAMarketplacePoster:
                         print("✅ Submitted 2FA code")
                         break
                     except Exception:
-                    continue
+                        continue
             
             # If no submit button found, try Enter key
             if not submitted:
@@ -1618,15 +1620,15 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             # Product/Model name
             try:
                 product_name = str(row.get("product_name") or row.get("model") or row.get("model_code") or "").strip()
-                        brand = str(row.get("brand", "")).strip()
+                brand = str(row.get("brand", "")).strip()
                 query = f"{brand} {product_name}".strip() if brand else product_name
-                
+
                 model_input = wait.until(EC.presence_of_element_located((By.NAME, "phModelFull")))
                 model_input.clear()
                 model_input.send_keys(query)
                 self._capture_step("gsmx_model_filled", f"Model: {query}")
-                except Exception:
-                    pass
+            except Exception:
+                pass
 
             # Quantity
             try:
@@ -1690,22 +1692,22 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                 submit_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")))
                 submit_btn.click()
                 self._capture_step("gsmx_submitted", "Submitted GSM Exchange offer")
-                    except Exception:
+            except Exception:
                 return "Error: Could not submit GSM Exchange offer"
 
             # Wait for response and check for success
             time.sleep(4)
             page_text = driver.page_source.lower()
-            
+
             if any(keyword in page_text for keyword in ["success", "offer created", "offer posted", "thank you"]):
                 self._capture_step("gsmx_success", "GSM Exchange offer posted successfully")
-                    return "Success: GSM Exchange offer posted"
+                return "Success: GSM Exchange offer posted"
             elif any(keyword in page_text for keyword in ["error", "required", "invalid", "please fill"]):
                 self._capture_step("gsmx_error", "Form submission error")
                 return "Error: Form submission failed - check required fields"
             else:
-            return "Pending: Submitted offer; waiting for confirmation"
-            
+                return "Pending: Submitted offer; waiting for confirmation"
+
         except TimeoutException:
             return "Timeout posting listing"
         except Exception as e:
@@ -3486,7 +3488,7 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
     - Keeps anti-hallucination: only report success when page indicates it
     """
     PLATFORM = "KARDOF"
-    LOGIN_URL = "https://kadorf.com/login"
+    LOGIN_URL = "https://www.kardof.com/login"
 
     def login_with_2fa(self) -> bool:
         """Kadorf simple login - replicate Cellpex's direct approach."""
@@ -3588,8 +3590,26 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
             quantity = str(row.get("quantity", "1"))
             brand = str(row.get("brand", ""))
             model = str(row.get("product_name") or row.get("model") or row.get("model_code") or "")
-            price = str(row.get("price", ""))
-            digits = ''.join(ch for ch in price if ch.isdigit())
+            price_raw = row.get("price", "")
+            price_value = ""
+            amount = None
+            if isinstance(price_raw, (int, float, Decimal)):
+                amount = Decimal(str(price_raw))
+            elif price_raw is not None:
+                price_str = str(price_raw).strip()
+                if price_str:
+                    match = re.search(r"(\d+(?:[.,]\d+)?)", price_str.replace(" ", ""))
+                    if match:
+                        candidate = match.group(1).replace(',', '.')
+                        try:
+                            amount = Decimal(candidate)
+                        except InvalidOperation:
+                            pass
+            if amount is not None:
+                normalized = format(amount.normalize(), 'f')
+                price_value = normalized.rstrip('0').rstrip('.') if '.' in normalized else normalized
+            else:
+                price_value = ''.join(ch for ch in str(price_raw) if ch.isdigit())
             details = row.get("description") or f"{row.get('memory','')} {row.get('color','')}".strip()
 
             # Category (required) with relaxed fallback
@@ -3659,7 +3679,8 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
 
             price_field = driver.find_element(By.NAME, "product[1][price]")
             price_field.clear()
-            price_field.send_keys(digits)
+            if price_value:
+                price_field.send_keys(price_value)
 
             # Details (optional)
             if details:
@@ -3667,8 +3688,9 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
                 details_field.clear()
                 details_field.send_keys(str(details)[:150])
 
-            print(f"✅ Form filled: {brand} {model} x{quantity} @ {digits} {currency}")
-            self._capture_step("kadorf_product_filled", f"{brand} {model} x{quantity} @ {digits}")
+            price_display = price_value or str(price_raw or "")
+            print(f"✅ Form filled: {brand} {model} x{quantity} @ {price_display} {currency}")
+            self._capture_step("kadorf_product_filled", f"{brand} {model} x{quantity} @ {price_display}")
             return True
         except Exception as e:
             print(f"⚠️  Form filling error: {e}")
@@ -3685,7 +3707,7 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
         try:
             # Navigate directly to the posting page
             print("📍 Navigating to Kadorf Sell page...")
-            driver.get("https://kadorf.com/sell")
+            driver.get("https://www.kardof.com/sell")
             self._capture_step("kadorf_sell_page", "Opened Kadorf sell page")
             
             # Reduced wait for form to load
@@ -3821,7 +3843,7 @@ if __name__ == "__main__":
         opts = webdriver.ChromeOptions(); opts.add_argument("--window-size=1920,1080")
         drv = webdriver.Chrome(options=opts)
         poster = EnhancedKardofPoster(drv)
-        drv.get("https://kadorf.com/sell"); time.sleep(1.5)
+        drv.get("https://www.kardof.com/sell"); time.sleep(1.5)
         poster._capture_step("kadorf_sell_smoke", "Opened Kadorf sell page for smoke test")
     except Exception as e:
         print(f"⚠️  Kadorf smoke open error: {e}")
