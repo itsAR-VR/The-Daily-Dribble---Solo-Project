@@ -82,6 +82,24 @@ except Exception as e:
     GMAIL_AVAILABLE = False
     gmail_service = None
 
+# Manual 2FA store utilities (human-in-the-loop)
+try:
+    from manual_2fa_store import (
+        prepare as manual_2fa_prepare,
+        submit_code as manual_2fa_submit,
+        wait_for_code as manual_2fa_wait,
+        get_status as manual_2fa_get_status,
+        clear as manual_2fa_clear,
+    )
+except Exception:
+    from .manual_2fa_store import (
+        prepare as manual_2fa_prepare,
+        submit_code as manual_2fa_submit,
+        wait_for_code as manual_2fa_wait,
+        get_status as manual_2fa_get_status,
+        clear as manual_2fa_clear,
+    )
+
 # Chrome availability: avoid blocking startup by not creating a driver here
 remote_url = os.environ.get("SELENIUM_REMOTE_URL")
 local_chrome_bin = os.environ.get("CHROME_BIN", "/usr/bin/google-chrome")
@@ -187,6 +205,10 @@ class ComprehensiveListingData(BaseModel):
 class EnhancedListingRequest(BaseModel):
     platform: str
     listing_data: ComprehensiveListingData
+
+
+class Manual2FACode(BaseModel):
+    code: str
 
 
 # Platform-specific field mappings
@@ -1785,11 +1807,8 @@ async def test_enhanced_gsm_2fa():
         }
 
 
-@app.get("/test/platform-status")
-async def platform_status():
-    """Get status of all platforms and their 2FA readiness"""
-    
-    platforms = {
+def _collect_platform_status() -> Dict[str, Dict[str, Any]]:
+    return {
         "cellpex": {
             "status": "ready",
             "credentials_available": bool(os.getenv("CELLPEX_USERNAME") and os.getenv("CELLPEX_PASSWORD")),
@@ -1826,6 +1845,41 @@ async def platform_status():
             "last_tested": "Not started"
         }
     }
+
+
+@app.get("/platform-status")
+async def platform_status_public():
+    """Public endpoint for platform readiness."""
+    return _collect_platform_status()
+
+
+@app.get("/test/platform-status")
+async def platform_status():
+    """Legacy test endpoint for platform readiness (mirrors /platform-status)."""
+    return _collect_platform_status()
+
+
+@app.post("/manual-2fa/{job_id}")
+async def submit_manual_2fa_code(job_id: str, payload: Manual2FACode, platform: Optional[str] = None):
+    """Submit a human-provided 2FA code for the given job."""
+    manual_2fa_prepare(job_id, platform=platform)
+    manual_2fa_submit(job_id, payload.code)
+    status = manual_2fa_get_status(job_id)
+    status["message"] = "2FA code submitted"
+    return status
+
+
+@app.get("/manual-2fa/{job_id}")
+async def get_manual_2fa_status(job_id: str):
+    """Get current manual 2FA status for a job."""
+    return manual_2fa_get_status(job_id)
+
+
+@app.delete("/manual-2fa/{job_id}")
+async def clear_manual_2fa(job_id: str):
+    """Clear any stored manual 2FA code for a job."""
+    manual_2fa_clear(job_id)
+    return {"job_id": job_id, "status": "cleared"}
     
     return {
         "platforms": platforms,

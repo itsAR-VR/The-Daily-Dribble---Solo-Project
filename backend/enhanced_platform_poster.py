@@ -8,6 +8,7 @@ import base64
 import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from typing import Optional
 import os
 from dotenv import load_dotenv
 from selenium import webdriver
@@ -32,6 +33,22 @@ except Exception:
         GMAIL_AVAILABLE = False
         gmail_service = None
 
+# Manual 2FA store (human fallback)
+try:
+    from manual_2fa_store import (
+        wait_for_code as manual_2fa_wait,
+        fetch_and_clear as manual_2fa_fetch_and_clear,
+        prepare as manual_2fa_prepare,
+        clear as manual_2fa_clear,
+    )
+except Exception:
+    from .manual_2fa_store import (
+        wait_for_code as manual_2fa_wait,
+        fetch_and_clear as manual_2fa_fetch_and_clear,
+        prepare as manual_2fa_prepare,
+        clear as manual_2fa_clear,
+    )
+
 class Enhanced2FAMarketplacePoster:
     """Enhanced base class with 2FA support via Gmail"""
     
@@ -47,6 +64,7 @@ class Enhanced2FAMarketplacePoster:
         self._pace_slow_ms = 200
         self._pace_fast_ms = 60
         self._last_action_ts = time.time()
+        self.manual_job_id: Optional[str] = None
 
     def _capture_step(self, step: str, message: str = "") -> None:
         """Capture a screenshot into base64 and append to steps."""
@@ -109,6 +127,185 @@ class Enhanced2FAMarketplacePoster:
         except Exception:
             pass
     
+    def _short_wait(self, timeout: float = 6.0) -> WebDriverWait:
+        """Return a shorter WebDriverWait helper for optional UI elements."""
+        try:
+            timeout = float(timeout)
+        except Exception:
+            timeout = 6.0
+        if timeout <= 0:
+            timeout = 1.0
+        return WebDriverWait(self.driver, timeout)
+
+    def _select_relaxed(self, select_el, candidates) -> bool:
+        """Select dropdown option using relaxed matching rules."""
+        try:
+            dropdown = Select(select_el)
+            options = dropdown.options
+        except Exception:
+            return False
+        texts = [(opt.text or "").strip() for opt in options]
+        lowers = [t.lower() for t in texts]
+
+        for cand in candidates or []:
+            if not cand:
+                continue
+            normalized = str(cand).strip()
+            if not normalized:
+                continue
+            lower = normalized.lower()
+            if lower in lowers:
+                try:
+                    dropdown.select_by_index(lowers.index(lower))
+                    return True
+                except Exception:
+                    continue
+
+        for cand in candidates or []:
+            if not cand:
+                continue
+            lower = str(cand).strip().lower()
+            if not lower:
+                continue
+            for idx_opt, text_opt in enumerate(lowers):
+                if lower in text_opt:
+                    try:
+                        dropdown.select_by_index(idx_opt)
+                        return True
+                    except Exception:
+                        continue
+
+        for cand in candidates or []:
+            if not cand:
+                continue
+            lower = str(cand).strip().lower()
+            if not lower:
+                continue
+            for idx_opt, text_opt in enumerate(lowers):
+                if text_opt.startswith(lower):
+                    try:
+                        dropdown.select_by_index(idx_opt)
+                        return True
+                    except Exception:
+                        continue
+        return False
+
+    def _try_pick_autocomplete(self, input_el, wait=None, desired_text: str = None) -> bool:
+        """Pick the first visible autocomplete suggestion, favouring desired_text."""
+        try:
+            time.sleep(1.0)
+            suggestion_queries = [
+                "//ul[contains(@class,'ui-autocomplete') and contains(@style,'display: block')]//li[1]",
+                "//ul[contains(@class,'ui-autocomplete')]//li[1]",
+                "//li[contains(@class,'ui-menu-item')][1]",
+                "//div[contains(@class,'autocomplete') or contains(@class,'suggest')]//li[1]",
+            ]
+
+            if desired_text:
+                try:
+                    items = self.driver.find_elements(
+                        By.XPATH,
+                        "//ul[contains(@class,'ui-autocomplete')]//li | //li[contains(@class,'ui-menu-item')] | //div[contains(@class,'autocomplete') or contains(@class,'suggest')]//li",
+                    )
+                    target_words = desired_text.lower().split()
+                    for it in items:
+                        try:
+                            if not it.is_displayed():
+                                continue
+                            snippet = (it.text or "").strip().lower()
+                            if not snippet:
+                                continue
+                            if target_words and all(word in snippet for word in target_words[:2]):
+                                self.driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", it)
+                                time.sleep(0.1)
+                                self.driver.execute_script("arguments[0].click();", it)
+                                return True
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
+
+            for query in suggestion_queries:
+                try:
+                    el = self.driver.find_element(By.XPATH, query)
+                    if not el.is_displayed():
+                        continue
+                    self.driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", el)
+                    time.sleep(0.1)
+                    self.driver.execute_script("arguments[0].click();", el)
+                    return True
+                except Exception:
+                    continue
+
+            try:
+                input_el.send_keys("\ue015")  # ArrowDown
+                time.sleep(0.1)
+                input_el.send_keys("\ue007")  # Enter
+                return True
+            except Exception:
+                pass
+        except Exception:
+            pass
+        return False
+
+    def _dismiss_common_popups(self, extra_selectors=None) -> int:
+        """Best-effort dismissal for cookie banners and overlays."""
+        driver = self.driver
+        selectors = [
+            "[class*='cookie']",
+            "[id*='cookie']",
+            "[class*='consent']",
+            "[class*='gdpr']",
+            "[class*='overlay']",
+            "[class*='modal']",
+            "[data-testid*='cookie']",
+        ]
+        if extra_selectors:
+            selectors.extend(extra_selectors)
+
+        dismissed = 0
+        for selector in selectors:
+            try:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+            except Exception:
+                continue
+            for element in elements:
+                try:
+                    if not element.is_displayed():
+                        continue
+                    driver.execute_script("arguments[0].style.display='none';", element)
+                    dismissed += 1
+                except Exception:
+                    continue
+
+        action_xpaths = [
+            "//button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'accept')]",
+            "//button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'agree')]",
+            "//button[contains(@class,'close') or contains(.,'×') or contains(.,'Close')]",
+            "//a[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'accept')]",
+            "//a[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'continue')]",
+        ]
+        for xp in action_xpaths:
+            try:
+                btn = driver.find_element(By.XPATH, xp)
+                if not btn.is_displayed():
+                    continue
+                try:
+                    driver.execute_script("arguments[0].click();", btn)
+                except Exception:
+                    try:
+                        btn.click()
+                    except Exception:
+                        continue
+                dismissed += 1
+            except Exception:
+                continue
+
+        if dismissed:
+            print(f"🍪 Dismissed {dismissed} popups/overlays")
+        return dismissed
+
+
     def _load_credentials(self) -> tuple[str, str]:
         """Load platform credentials from environment variables"""
         load_dotenv()
@@ -118,7 +315,7 @@ class Enhanced2FAMarketplacePoster:
             raise RuntimeError(f"Missing credentials for {self.PLATFORM}")
         return user, pwd
     
-    def login_with_2fa(self) -> bool:
+    def login_with_2fa(self, job_id: Optional[str] = None) -> bool:
         """Enhanced login with 2FA support"""
         if not self.LOGIN_URL:
             raise NotImplementedError("LOGIN_URL must be defined")
@@ -127,6 +324,12 @@ class Enhanced2FAMarketplacePoster:
         driver.get(self.LOGIN_URL)
         self._capture_step("login_page", f"Opened login page: {self.LOGIN_URL}")
         wait = WebDriverWait(driver, 20)
+        self.manual_job_id = job_id
+        if job_id:
+            try:
+                manual_2fa_prepare(job_id, platform=self.PLATFORM.lower())
+            except Exception:
+                pass
         
         try:
             # Standard login
@@ -165,7 +368,7 @@ class Enhanced2FAMarketplacePoster:
             # Check for 2FA
             if self._check_for_2fa():
                 print(f"📱 2FA required for {self.PLATFORM}")
-                return self._handle_2fa()
+                return self._handle_2fa(job_id=job_id)
             else:
                 print(f"✅ Logged into {self.PLATFORM} successfully (no 2FA)")
                 self._capture_step("login_success", "Logged in without 2FA")
@@ -626,6 +829,7 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             # Wait for page to fully load
             time.sleep(3)
             self._dismiss_gsmx_popups()
+            self._dismiss_common_popups(['.cc-window', '.modal', '#cookie-banner'])
             
             # Try multiple username selectors (from test file)
             username_selectors = [
@@ -1593,126 +1797,196 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             return False
     
     def post_listing(self, row):
-        """Post listing on GSM Exchange - direct approach like Cellpex."""
+        """Post listing on GSM Exchange using a resilient Cellpex-style flow."""
         driver = self.driver
-        wait = WebDriverWait(driver, 20)
-        
+        short_wait = self._short_wait(8)
+
+        def find(locator):
+            try:
+                return driver.find_element(*locator)
+            except Exception:
+                try:
+                    return self._short_wait(6).until(EC.presence_of_element_located(locator))
+                except Exception:
+                    return None
+
         try:
-            # Navigate directly to the posting page (like Cellpex does)
             print("📍 Navigating to GSM Exchange Add Offer page...")
             driver.get("https://www.gsmexchange.com/en/phones?tab=offers")
             self._capture_step("gsmx_offer_page", "Opened GSM Exchange offer page")
-            
-            # Wait for form to load
-            time.sleep(3)
-            
-            # Fill form fields based on GSM Exchange selectors (like Cellpex approach)
-            print("📝 Filling GSM Exchange listing form...")
-            
-            # Select "I want to sell" if radio present
+            time.sleep(2)
+            self._dismiss_common_popups(['.cc-window', '.modal', '#cookie-banner'])
             try:
-                sell_radio = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#typeSell, input[name='isOffer'][value='1']")))
-                sell_radio.click()
-                self._capture_step("gsmx_sell_selected", "Selected I want to sell")
+                self._short_wait(10).until(EC.presence_of_element_located((By.CSS_SELECTOR, "form")))
             except Exception:
                 pass
 
-            # Product/Model name
-            try:
-                product_name = str(row.get("product_name") or row.get("model") or row.get("model_code") or "").strip()
-                brand = str(row.get("brand", "")).strip()
-                query = f"{brand} {product_name}".strip() if brand else product_name
+            for locator in [
+                (By.CSS_SELECTOR, '#typeSell'),
+                (By.CSS_SELECTOR, "input[name='isOffer'][value='1']"),
+                (By.NAME, 'isOffer'),
+            ]:
+                sell_radio = find(locator)
+                if sell_radio:
+                    try:
+                        sell_radio.click()
+                    except Exception:
+                        try:
+                            driver.execute_script("arguments[0].click();", sell_radio)
+                        except Exception:
+                            continue
+                    self._capture_step("gsmx_sell_selected", "Selected sell offer radio")
+                    break
 
-                model_input = wait.until(EC.presence_of_element_located((By.NAME, "phModelFull")))
-                model_input.clear()
+            brand = str(row.get("brand") or "").strip()
+            product_name = str(row.get("product_name") or row.get("model") or row.get("model_code") or "").strip()
+            query = f"{brand} {product_name}".strip() if brand and product_name else (product_name or brand)
+
+            model_input = find((By.NAME, "phModelFull"))
+            if model_input and query:
+                try:
+                    model_input.clear()
+                except Exception:
+                    pass
                 model_input.send_keys(query)
                 self._capture_step("gsmx_model_filled", f"Model: {query}")
-            except Exception:
-                pass
+                try:
+                    self._try_pick_autocomplete(model_input, short_wait, query)
+                except Exception:
+                    pass
 
-            # Quantity
-            try:
-                qty_val = str(row.get("quantity", "1"))
-                qty_field = driver.find_element(By.NAME, "phQty")
-                qty_field.clear()
-                qty_field.send_keys(qty_val)
-                self._capture_step("gsmx_qty_filled", f"Quantity: {qty_val}")
-            except Exception:
-                pass
+            qty_value = str(row.get("quantity") or "1")
+            qty_field = find((By.NAME, "phQty"))
+            if qty_field:
+                try:
+                    qty_field.clear()
+                except Exception:
+                    pass
+                qty_field.send_keys(qty_value)
+                self._capture_step("gsmx_qty_filled", f"Quantity: {qty_value}")
 
-            # Currency
-            try:
-                currency = str(row.get("currency", "USD")).upper()
-                currency_select = Select(driver.find_element(By.NAME, "phCurrency"))
-                currency_select.select_by_visible_text(currency)
+            currency = str(row.get("currency") or "USD").strip().upper()
+            currency_field = find((By.NAME, "phCurrency"))
+            if currency_field:
+                if not self._select_relaxed(currency_field, [currency, currency.upper(), currency.lower()]):
+                    try:
+                        Select(currency_field).select_by_index(1)
+                    except Exception:
+                        pass
                 self._capture_step("gsmx_currency_filled", f"Currency: {currency}")
-            except Exception:
-                pass
 
-            # Price
-            try:
-                price_val = str(row.get("price", ""))
-                price_field = driver.find_element(By.NAME, "phPrice")
-                price_field.clear()
-                price_field.send_keys(price_val)
-                self._capture_step("gsmx_price_filled", f"Price: {price_val}")
-            except Exception:
-                pass
+            price_raw = row.get("price", "")
+            price_field = find((By.NAME, "phPrice"))
+            if price_field:
+                price_text = ''.join(ch for ch in str(price_raw) if ch.isdigit() or ch in '.,')
+                try:
+                    price_field.clear()
+                except Exception:
+                    pass
+                if price_text:
+                    price_field.send_keys(price_text)
+                self._capture_step("gsmx_price_filled", f"Price: {price_text or price_raw}")
 
-            # Condition
-            try:
-                condition = str(row.get("condition", "New"))
-                condition_select = Select(driver.find_element(By.NAME, "phCondition"))
-                condition_select.select_by_visible_text(condition)
+            condition = str(row.get("condition") or "New").strip()
+            condition_field = find((By.NAME, "phCondition"))
+            if condition_field:
+                cond_candidates = [condition, condition.title(), condition.upper()]
+                if not self._select_relaxed(condition_field, cond_candidates):
+                    try:
+                        Select(condition_field).select_by_index(1)
+                    except Exception:
+                        pass
                 self._capture_step("gsmx_condition_filled", f"Condition: {condition}")
-            except Exception:
-                pass
 
-            # Comments/Description
-            try:
-                description = row.get("description") or f"High quality {brand} device in {row.get('condition', 'excellent')} condition"
-                comments_field = driver.find_element(By.NAME, "phComments")
-                comments_field.clear()
-                comments_field.send_keys(str(description)[:1000])
+            description = row.get("description") or f"High quality {brand or 'device'} in {row.get('condition', 'excellent')} condition"
+            comments_field = find((By.NAME, "phComments"))
+            if comments_field and description:
+                try:
+                    comments_field.clear()
+                except Exception:
+                    pass
+                comments_field.send_keys(str(description)[:900])
                 self._capture_step("gsmx_description_filled", "Description entered")
-            except Exception:
-                pass
 
-            # Confirm stock checkbox
-            try:
-                confirm_cb = driver.find_element(By.NAME, "confirm")
-                if not confirm_cb.is_selected():
+            confirm_cb = find((By.NAME, "confirm"))
+            if confirm_cb and not confirm_cb.is_selected():
+                try:
                     confirm_cb.click()
+                except Exception:
+                    try:
+                        driver.execute_script("arguments[0].click();", confirm_cb)
+                    except Exception:
+                        pass
                 self._capture_step("gsmx_confirm_stock", "Confirmed physical stock")
-            except Exception:
-                pass
 
-            # Submit the form
-            try:
-                submit_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")))
-                submit_btn.click()
+            submitted = False
+            for locator in [
+                (By.CSS_SELECTOR, "button[type='submit']"),
+                (By.CSS_SELECTOR, "input[type='submit']"),
+            ]:
+                try:
+                    submit_btn = short_wait.until(EC.element_to_be_clickable(locator))
+                except Exception:
+                    submit_btn = find(locator)
+                if not submit_btn:
+                    continue
+                try:
+                    driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", submit_btn)
+                except Exception:
+                    pass
+                try:
+                    submit_btn.click()
+                except Exception:
+                    try:
+                        driver.execute_script("arguments[0].click();", submit_btn)
+                    except Exception:
+                        continue
+                submitted = True
                 self._capture_step("gsmx_submitted", "Submitted GSM Exchange offer")
-            except Exception:
+                break
+
+            if not submitted:
                 return "Error: Could not submit GSM Exchange offer"
 
-            # Wait for response and check for success
-            time.sleep(4)
+            time.sleep(2.5)
             page_text = driver.page_source.lower()
 
-            if any(keyword in page_text for keyword in ["success", "offer created", "offer posted", "thank you"]):
-                self._capture_step("gsmx_success", "GSM Exchange offer posted successfully")
-                return "Success: GSM Exchange offer posted"
-            elif any(keyword in page_text for keyword in ["error", "required", "invalid", "please fill"]):
-                self._capture_step("gsmx_error", "Form submission error")
-                return "Error: Form submission failed - check required fields"
-            else:
-                return "Pending: Submitted offer; waiting for confirmation"
+            success_keywords = ["offer created", "offer posted", "thank you", "success"]
+            review_keywords = ["pending moderation", "awaiting review", "submitted for approval", "under review"]
+            error_keywords = ["error", "required", "invalid", "please fill", "please select", "must select"]
+
+            if any(keyword in page_text for keyword in error_keywords):
+                inline_errors = self._read_inline_errors()
+                self._capture_step("gsmx_error", inline_errors or "Form submission error")
+                message = "Error: Form submission failed"
+                if inline_errors:
+                    message += f" - {inline_errors}"
+                return message
+
+            verified = self._verify_gsmx_listing(row)
+            if any(keyword in page_text for keyword in success_keywords) or verified:
+                if verified:
+                    self._capture_step("gsmx_success", "GSM Exchange offer posted and verified")
+                    return "Success: GSM Exchange offer posted and verified"
+                self._capture_step("gsmx_success", "GSM Exchange offer posted")
+                return "Pending: Offer submitted; verification pending"
+
+            if any(keyword in page_text for keyword in review_keywords):
+                if verified:
+                    return "Success: Submitted for review and visible in account"
+                return "Pending: Submission under review"
+
+            if verified:
+                self._capture_step("gsmx_success", "Offer verified post submission")
+                return "Success: Offer appears in account"
+
+            return "Pending: Submitted offer; waiting for confirmation"
 
         except TimeoutException:
             return "Timeout posting listing"
-        except Exception as e:
-            self._capture_step("gsmx_exception", str(e))
-            return f"Error: {str(e)}"
+        except Exception as exc:
+            self._capture_step("gsmx_exception", str(exc))
+            return f"Error: {exc}"
 
 
 class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
@@ -1790,99 +2064,7 @@ class EnhancedCellpexPoster(Enhanced2FAMarketplacePoster):
             s = s[:3]
         return s
 
-    def _select_relaxed(self, sel_element, desired_text_candidates: list) -> bool:
-        """Try to select option by visible text with relaxed matching: exact (case-insensitive),
-        then contains, then startswith. Returns True if selection succeeded.
-        """
-        try:
-            dropdown = Select(sel_element)
-            options = dropdown.options
-            texts = [(opt.text or "").strip() for opt in options]
-            lower_texts = [t.lower() for t in texts]
-            # Exact case-insensitive
-            for cand in desired_text_candidates:
-                if not cand:
-                    continue
-                c = str(cand).strip()
-                if c.lower() in lower_texts:
-                    idx = lower_texts.index(c.lower())
-                    dropdown.select_by_index(idx)
-                    return True
-            # Contains
-            for cand in desired_text_candidates:
-                if not cand:
-                    continue
-                c = str(cand).strip().lower()
-                for idx, t in enumerate(lower_texts):
-                    if c and c in t:
-                        dropdown.select_by_index(idx)
-                        return True
-            # Startswith
-            for cand in desired_text_candidates:
-                if not cand:
-                    continue
-                c = str(cand).strip().lower()
-                for idx, t in enumerate(lower_texts):
-                    if c and t.startswith(c):
-                        dropdown.select_by_index(idx)
-                        return True
-            return False
-        except Exception:
-            return False
 
-    def _try_pick_autocomplete(self, input_el, wait: WebDriverWait, desired_text: str | None = None) -> bool:
-        """Try to select an autocomplete suggestion for a text input.
-        Preference order: a suggestion matching desired_text, otherwise the first visible item.
-        Returns True if something was picked (by click or keys)."""
-        try:
-            # Wait briefly for suggestions to render
-            time.sleep(1.0)
-            # Try common containers
-            suggestion_xpaths = [
-                "//ul[contains(@class,'ui-autocomplete') and contains(@style,'display: block')]//li[1]",
-                "//ul[contains(@class,'ui-autocomplete')]//li[1]",
-                "//li[contains(@class,'ui-menu-item')][1]",
-                "//div[contains(@class,'autocomplete') or contains(@class,'suggest')]//li[1]"
-            ]
-            # If we know the desired text, look for any suggestion item that matches it
-            if desired_text:
-                try:
-                    sug_items = self.driver.find_elements(By.XPATH, "//ul[contains(@class,'ui-autocomplete')]//li | //li[contains(@class,'ui-menu-item')] | //div[contains(@class,'autocomplete') or contains(@class,'suggest')]//li")
-                    for it in sug_items:
-                        try:
-                            if it.is_displayed():
-                                txt = (it.text or "").strip().lower()
-                                if txt and all(t in txt for t in desired_text.lower().split()[:2]):
-                                    self.driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", it)
-                                    time.sleep(0.1)
-                                    self.driver.execute_script("arguments[0].click();", it)
-                                    return True
-                        except Exception:
-                            continue
-                except Exception:
-                    pass
-            for sx in suggestion_xpaths:
-                try:
-                    el = self.driver.find_element(By.XPATH, sx)
-                    if el.is_displayed():
-                        self.driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", el)
-                        time.sleep(0.1)
-                        self.driver.execute_script("arguments[0].click();", el)
-                        return True
-                except Exception:
-                    continue
-            # Fallback to keyboard: ArrowDown + Enter
-            try:
-                input_el.send_keys("\ue015")  # Keys.ARROW_DOWN
-                time.sleep(0.1)
-                input_el.send_keys("\ue007")  # Keys.ENTER
-                return True
-            except Exception:
-                pass
-        except Exception:
-            pass
-            return False
-    
     def login_with_2fa(self) -> bool:
         """Enhanced login with 2FA support - Cellpex specific implementation"""
         driver = self.driver
@@ -3495,6 +3677,7 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
         driver = self.driver
         driver.get(self.LOGIN_URL)
         self._capture_step("kadorf_login_page", f"Opened login page: {self.LOGIN_URL}")
+        self._dismiss_common_popups(['.cookie', '.modal', '#cookie-banner'])
         wait = WebDriverWait(driver, 20)
         
         try:
@@ -3541,42 +3724,6 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
             self._capture_step("kadorf_login_error", f"{e}")
             return False
 
-    def _select_relaxed(self, select_el, candidates: list[str]) -> bool:
-        """Select <option> using relaxed matching (exact, contains, startswith)."""
-        try:
-            dd = Select(select_el)
-            opts = dd.options
-            texts = [(o.text or '').strip() for o in opts]
-            lowers = [t.lower() for t in texts]
-            # exact
-            for c in candidates:
-                if not c:
-                    continue
-                cl = str(c).strip().lower()
-                if cl in lowers:
-                    dd.select_by_index(lowers.index(cl))
-                    return True
-            # contains
-            for c in candidates:
-                if not c:
-                    continue
-                cl = str(c).strip().lower()
-                for i, t in enumerate(lowers):
-                    if cl and cl in t:
-                        dd.select_by_index(i)
-                        return True
-            # startswith
-            for c in candidates:
-                if not c:
-                    continue
-                cl = str(c).strip().lower()
-                for i, t in enumerate(lowers):
-                    if cl and t.startswith(cl):
-                        dd.select_by_index(i)
-                        return True
-        except Exception:
-            pass
-        return False
 
     def _fill_kadorf_form(self, row, wait) -> bool:
         """Fill Kadorf sell form fields quickly with relaxed fallbacks."""
@@ -3709,6 +3856,7 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
             print("📍 Navigating to Kadorf Sell page...")
             driver.get("https://www.kardof.com/sell")
             self._capture_step("kadorf_sell_page", "Opened Kadorf sell page")
+            self._dismiss_common_popups(['.cookie', '.modal', '#cookie-banner'])
             
             # Reduced wait for form to load
             time.sleep(1.5)
