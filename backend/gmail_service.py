@@ -24,11 +24,79 @@ class GmailService:
     def __init__(self):
         self.service = None
         self.credentials = None
-        self.credentials_file = os.path.join(os.path.dirname(__file__), 'google_oauth_credentials.json')
-        # Use a writable temp location in containerized environments like Railway
-        self.token_file = "/tmp/gmail_token.pickle"
+        self.credentials_file = os.path.expanduser(os.environ.get(
+            'GOOGLE_OAUTH_CLIENT_SECRETS_FILE',
+            os.path.join(os.path.dirname(__file__), 'google_oauth_credentials.json')
+        ))
+        default_token_dir = os.environ.get('DATA_DIR', os.path.join(os.getcwd(), 'data'))
+        token_path = os.environ.get('GMAIL_TOKEN_FILE', os.path.join(default_token_dir, 'gmail_token.pickle'))
+        token_path = os.path.expanduser(token_path)
+        if not os.path.isabs(token_path):
+            token_path = os.path.abspath(token_path)
+        os.makedirs(os.path.dirname(token_path), exist_ok=True)
+        self.token_file = token_path
         self.scopes = ['https://www.googleapis.com/auth/gmail.readonly']
+        # Normalize desktop (installed) client JSON to a web-style config with proper callback
+        try:
+            self.credentials_file = self._normalize_client_secret_file(self.credentials_file)
+        except Exception:
+            # Best-effort: continue with original path if normalization fails
+            pass
         self._initialize_service()
+
+    def _normalize_client_secret_file(self, path: str) -> str:
+        """If the provided OAuth client JSON is an 'installed' (desktop) type,
+        create a compatible 'web' JSON with explicit redirect URIs and return its path.
+
+        This enables a click-through web OAuth flow without requiring users to hand-edit
+        the client file. The normalized file is stored alongside the token file.
+        """
+        try:
+            with open(path, 'r') as f:
+                raw = json.load(f)
+        except Exception:
+            return path
+
+        if isinstance(raw, dict) and 'web' in raw:
+            return path
+        if not (isinstance(raw, dict) and 'installed' in raw and isinstance(raw['installed'], dict)):
+            return path
+
+        src = raw['installed']
+        client_id = src.get('client_id')
+        client_secret = src.get('client_secret')
+        auth_uri = src.get('auth_uri', 'https://accounts.google.com/o/oauth2/auth')
+        token_uri = src.get('token_uri', 'https://oauth2.googleapis.com/token')
+        cert_url = src.get('auth_provider_x509_cert_url', 'https://www.googleapis.com/oauth2/v1/certs')
+
+        # Build redirect URIs suitable for our FastAPI app
+        redirects = [
+            'http://localhost:8000/gmail/callback',
+            'http://127.0.0.1:8000/gmail/callback',
+            'http://localhost/gmail/callback',
+        ]
+
+        web_cfg = {
+            'web': {
+                'client_id': client_id,
+                'project_id': src.get('project_id'),
+                'auth_uri': auth_uri,
+                'token_uri': token_uri,
+                'auth_provider_x509_cert_url': cert_url,
+                'client_secret': client_secret,
+                'redirect_uris': redirects,
+            }
+        }
+
+        dest_dir = os.path.dirname(self.token_file) or os.path.dirname(path)
+        os.makedirs(dest_dir, exist_ok=True)
+        dest_path = os.path.join(dest_dir, 'google_oauth_web.json')
+        try:
+            with open(dest_path, 'w') as f:
+                json.dump(web_cfg, f, indent=2)
+            return dest_path
+        except Exception:
+            return path
     
     def _initialize_service(self):
         """Initialize Gmail service.

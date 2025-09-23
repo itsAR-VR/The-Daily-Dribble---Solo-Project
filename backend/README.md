@@ -30,49 +30,40 @@ HANDLOT_PASSWORD=your_handlot_password
 LINKEDIN_USERNAME=your_linkedin_username
 LINKEDIN_PASSWORD=your_linkedin_password
 
-# Gmail API for 2FA code retrieval (optional)
+# Gmail OAuth for 2FA code retrieval (optional)
+GMAIL_CLIENT_ID=your-google-client-id
+GMAIL_CLIENT_SECRET=your-google-client-secret
+GMAIL_REFRESH_TOKEN=your-google-refresh-token
 GMAIL_TARGET_EMAIL=your-email@gmail.com
-GMAIL_SERVICE_ACCOUNT_JSON='{"type": "service_account", "project_id": "...", ...}'
+GMAIL_TOKEN_FILE=./data/gmail_token.pickle
 
 # OpenAI API for AI-enhanced descriptions (optional)
 OPENAI_API_KEY=your_openai_api_key
 ```
 
-### Gmail API Setup (Optional - for automatic 2FA handling)
+### Gmail OAuth Setup (Optional – automatic 2FA retrieval)
 
-The bot can automatically retrieve 2FA verification codes from Gmail for platforms that require them (like GSM Exchange and Cellpex). To enable this:
+The bot can automatically retrieve 2FA verification codes from Gmail using OAuth. Once you complete the flow the refresh token keeps the integration signed in so you do not need to re-authorize each run.
 
-1. **Create Google Cloud Project**:
-   - Go to [Google Cloud Console](https://console.cloud.google.com)
-   - Create a new project or select existing one
-
-2. **Enable Gmail API**:
-   - Go to APIs & Services > Library
-   - Search for "Gmail API" and enable it
-
-3. **Create Service Account**:
-   - Go to APIs & Services > Credentials
-   - Click "Create Credentials" > "Service Account"
-   - Download the JSON key file
-
-4. **Enable Domain-Wide Delegation**:
-   - In the service account settings, enable "G Suite Domain-wide Delegation"
-   - Note the Client ID
-
-5. **Authorize Service Account** (for Google Workspace):
-   - Go to Google Admin Console > Security > API Controls > Domain-wide Delegation
-   - Add the Client ID and scope: `https://www.googleapis.com/auth/gmail.send`
-
-6. **Set Environment Variables**:
+1. **Create a Google Cloud project** or reuse an existing one.
+2. **Enable the Gmail API** under *APIs & Services → Library*.
+3. **Configure the OAuth consent screen** (External type is fine for individual use).
+4. **Create OAuth client credentials** → choose *Desktop app* and note the Client ID/Secret.
+5. Run the helper to complete OAuth locally and grab a refresh token:
    ```bash
+   python backend/get_refresh_token.py
+   ```
+6. Copy the values into your environment:
+   ```bash
+   GMAIL_CLIENT_ID=your-google-client-id
+   GMAIL_CLIENT_SECRET=your-google-client-secret
+   GMAIL_REFRESH_TOKEN=the-refresh-token-you-just-generated
    GMAIL_TARGET_EMAIL=your-email@gmail.com
-   GMAIL_SERVICE_ACCOUNT_JSON='{"type": "service_account", ...}'  # Full JSON content
+   GMAIL_TOKEN_FILE=./data/gmail_token.pickle  # optional override
    ```
+7. **Persist the token file**. The backend caches the live access token at `GMAIL_TOKEN_FILE` (defaults to `./data/gmail_token.pickle`). Mount or retain that directory (`DATA_DIR`/`./data`) in production so the session stays warm.
 
-7. **Test Configuration**:
-   ```bash
-   python setup_gmail_env_template.py
-   ```
+If you ever need to rotate credentials, delete the token file and rerun the helper to generate a new refresh token.
 
 ## Running the Server
 
@@ -151,6 +142,21 @@ Check the status of a job without downloading the file.
   "message": "Results are ready for download"
 }
 ```
+
+### Manual 2FA Assistance
+When Gmail-based retrieval is unavailable, the backend exposes manual endpoints:
+
+```
+POST /manual-2fa/{job_id}
+GET /manual-2fa/{job_id}
+DELETE /manual-2fa/{job_id}
+```
+
+Workflow:
+1. Start an enhanced visual job (`POST /listings/enhanced-visual/start`) and capture the returned `job_id`.
+2. When the marketplace prompts for a verification code, submit it via `POST /manual-2fa/{job_id}` with `{"code": "123456"}`.
+3. Poll `GET /manual-2fa/{job_id}` until it reports `submitted`; the automation flow will resume automatically.
+4. Optionally call `DELETE /manual-2fa/{job_id}` after completion to clear stored codes.
 
 ## Example Usage
 
