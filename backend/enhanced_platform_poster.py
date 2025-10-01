@@ -657,16 +657,51 @@ class Enhanced2FAMarketplacePoster:
             return False
     
     def _check_login_success(self) -> bool:
-        """Check if login was successful"""
+        """Check if login was successful using multiple verification methods"""
         driver = self.driver
+        current_url = driver.current_url.lower()
         
-        # Platform-specific success indicators
+        # Multi-layered verification for GSM Exchange
+        if self.PLATFORM.lower() == 'gsmexchange':
+            # 1. URL check - verify we're on authenticated pages
+            url_indicators = ['phones', 'trading', 'dashboard', 'offers', 'account']
+            url_check = any(indicator in current_url for indicator in url_indicators)
+            
+            # 2. Element check - look for logout/account elements
+            element_checks = []
+            element_selectors = [
+                (By.XPATH, "//a[contains(@href, 'logout') or contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'logout')]"),
+                (By.XPATH, "//a[contains(@href, 'my-offers') or contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'my offers')]"),
+                (By.XPATH, "//a[contains(@href, 'add-offer') or contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add offer')]"),
+                (By.CSS_SELECTOR, "a[href*='logout'], button[onclick*='logout']"),
+            ]
+            
+            for by, selector in element_selectors:
+                try:
+                    el = driver.find_element(by, selector)
+                    if el.is_displayed():
+                        element_checks.append(True)
+                        print(f"✅ Found logged-in indicator element: {by}={selector}")
+                        break
+                except:
+                    continue
+            
+            element_check = len(element_checks) > 0
+            
+            # 3. Page text check (fallback)
+            page_text = driver.page_source.lower()
+            text_indicators = ['my account', 'my offers', 'logout', 'add offer', 'post offers']
+            text_check = any(indicator in page_text for indicator in text_indicators)
+            
+            # Login successful if URL check OR element check passes, with text as confirmation
+            login_success = (url_check or element_check) and text_check
+            
+            print(f"📍 Login verification - URL: {url_check}, Element: {element_check}, Text: {text_check} → {login_success}")
+            return login_success
+        
+        # Default verification for other platforms
         success_indicators = {
             'hubx': ['dashboard', 'inventory', 'sell'],
-            # GSMX: avoid generic words (e.g., 'phones' appears on public pages). Use account/offer cues.
-            'gsmexchange': [
-                'my account', 'my offers', 'logout', 'add offer', 'new offer', 'post offers', 'trading'
-            ],
             'cellpex': ['dashboard', 'listings', 'profile'],
             'kardof': ['panel', 'listings', 'account'],
             'handlot': ['dashboard', 'inventory', 'account']
@@ -831,22 +866,27 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             self._dismiss_gsmx_popups()
             self._dismiss_common_popups(['.cc-window', '.modal', '#cookie-banner'])
             
-            # Try multiple username selectors (from test file)
+            # Multi-selector fallback chain with diverse selector types
             username_selectors = [
-                "input[name='email']",
-                "input[name='username']", 
-                "input[type='email']",
-                "input[placeholder*='email']",
-                "input[placeholder*='username']",
-                "#email",
-                "#username"
+                (By.NAME, "email"),
+                (By.NAME, "username"),
+                (By.ID, "email"),
+                (By.ID, "username"),
+                (By.CSS_SELECTOR, "input[type='email']"),
+                (By.CSS_SELECTOR, "input[name='email']"),
+                (By.CSS_SELECTOR, "input[name='username']"),
+                (By.CSS_SELECTOR, "input[placeholder*='email' i]"),
+                (By.CSS_SELECTOR, "input[placeholder*='username' i]"),
+                (By.XPATH, "//input[@type='email' or @name='email' or @name='username' or @id='email' or @id='username']")
             ]
             
             user_field = None
-            for selector in username_selectors:
+            for by, selector in username_selectors:
                 try:
-                    user_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
-                    print(f"✅ Found username field: {selector}")
+                    user_field = WebDriverWait(driver, 3).until(
+                        EC.presence_of_element_located((by, selector))
+                    )
+                    print(f"✅ Found username field: {by}={selector}")
                     break
                 except TimeoutException:
                     continue
@@ -860,20 +900,24 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             user_field.send_keys(self.username)
             print("✅ Username entered")
             
-            # Try multiple password selectors
+            # Multi-selector fallback chain for password field
             password_selectors = [
-                "input[name='password']",
-                "input[type='password']",
-                "#password"
+                (By.NAME, "password"),
+                (By.ID, "password"),
+                (By.CSS_SELECTOR, "input[type='password']"),
+                (By.CSS_SELECTOR, "input[name='password']"),
+                (By.XPATH, "//input[@type='password' or @name='password' or @id='password']")
             ]
             
             pass_field = None
-            for selector in password_selectors:
+            for by, selector in password_selectors:
                 try:
-                    pass_field = driver.find_element(By.CSS_SELECTOR, selector)
-                    print(f"✅ Found password field: {selector}")
+                    pass_field = WebDriverWait(driver, 3).until(
+                        EC.presence_of_element_located((by, selector))
+                    )
+                    print(f"✅ Found password field: {by}={selector}")
                     break
-                except Exception:
+                except TimeoutException:
                     continue
             
             if not pass_field:
@@ -886,29 +930,54 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             print("✅ Password entered")
             self._capture_step("gsmx_login_filled", "Filled GSM Exchange credentials")
             
-            # Try multiple submit selectors
+            # Multi-selector fallback chain for submit button
             submit_selectors = [
-                "button[type='submit']",
-                "input[type='submit']", 
-                "[onclick*='login']",
-                "[onclick*='signin']"
+                (By.NAME, "submit"),
+                (By.ID, "submit"),
+                (By.CSS_SELECTOR, "button[type='submit']"),
+                (By.CSS_SELECTOR, "input[type='submit']"),
+                (By.CSS_SELECTOR, "button[onclick*='login']"),
+                (By.CSS_SELECTOR, "button[onclick*='signin']"),
+                (By.XPATH, "//button[@type='submit']"),
+                (By.XPATH, "//input[@type='submit']"),
+                (By.XPATH, "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login')]"),
+                (By.XPATH, "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign in')]"),
+                (By.XPATH, "//a[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login')]")
             ]
             
             submitted = False
-            for selector in submit_selectors:
+            submit_btn = None
+            for by, selector in submit_selectors:
                 try:
-                    submit = driver.find_element(By.CSS_SELECTOR, selector)
-                    submit.click()
-                    submitted = True
-                    print(f"✅ Form submitted using: {selector}")
+                    submit_btn = WebDriverWait(driver, 3).until(
+                        EC.element_to_be_clickable((by, selector))
+                    )
+                    print(f"✅ Found submit button: {by}={selector}")
                     break
-                except Exception:
+                except TimeoutException:
                     continue
             
+            if submit_btn:
+                try:
+                    # Try regular click first
+                    submit_btn.click()
+                    submitted = True
+                    print("✅ Form submitted using regular click")
+                except Exception as e:
+                    print(f"⚠️  Regular click failed: {e}, trying JavaScript click...")
+                    try:
+                        # Fallback to JavaScript click
+                        driver.execute_script("arguments[0].click();", submit_btn)
+                        submitted = True
+                        print("✅ Form submitted using JavaScript click")
+                    except Exception as e2:
+                        print(f"❌ JavaScript click also failed: {e2}")
+            
             if not submitted:
-                # Try Enter key as fallback
+                # Try Enter key as last resort
                 try:
                     pass_field.send_keys("\n")
+                    submitted = True
                     print("✅ Form submitted using Enter key")
                 except Exception:
                     pass
@@ -1919,32 +1988,69 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
                         pass
                 self._capture_step("gsmx_confirm_stock", "Confirmed physical stock")
 
-            submitted = False
-            for locator in [
+            # Multi-selector fallback chain for form submit button
+            submit_selectors = [
+                (By.CSS_SELECTOR, "button.primary.c-tOR-item[type='submit']"),
+                (By.CSS_SELECTOR, "button[type='submit'].primary"),
                 (By.CSS_SELECTOR, "button[type='submit']"),
                 (By.CSS_SELECTOR, "input[type='submit']"),
-            ]:
+                (By.CSS_SELECTOR, "button.c-tOR-item[type='submit']"),
+                (By.NAME, "submit"),
+                (By.XPATH, "//button[@type='submit' and contains(@class, 'primary')]"),
+                (By.XPATH, "//form[@action='/offers']//button[@type='submit']"),
+                (By.XPATH, "//button[@type='submit']"),
+                (By.XPATH, "//input[@type='submit']"),
+            ]
+            
+            submitted = False
+            submit_btn = None
+            for by, selector in submit_selectors:
                 try:
-                    submit_btn = short_wait.until(EC.element_to_be_clickable(locator))
-                except Exception:
-                    submit_btn = find(locator)
-                if not submit_btn:
-                    continue
+                    submit_btn = WebDriverWait(driver, 5).until(
+                        EC.element_to_be_clickable((by, selector))
+                    )
+                    print(f"✅ Found form submit button: {by}={selector}")
+                    break
+                except TimeoutException:
+                    try:
+                        submit_btn = driver.find_element(by, selector)
+                        if submit_btn and submit_btn.is_displayed():
+                            print(f"✅ Found form submit button (without wait): {by}={selector}")
+                            break
+                    except:
+                        continue
+                    
+            if submit_btn:
                 try:
+                    # Scroll into view
                     driver.execute_script("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", submit_btn)
+                    time.sleep(0.3)
                 except Exception:
                     pass
+                
+                # Dismiss any popups before clicking
+                try:
+                    self._dismiss_gsmx_popups()
+                except:
+                    pass
+                
+                # Try multiple click strategies
                 try:
                     submit_btn.click()
-                except Exception:
+                    submitted = True
+                    print("✅ Form submitted using regular click")
+                except Exception as e:
+                    print(f"⚠️  Regular click failed: {e}, trying JavaScript click...")
                     try:
                         driver.execute_script("arguments[0].click();", submit_btn)
-                    except Exception:
-                        continue
-                submitted = True
-                self._capture_step("gsmx_submitted", "Submitted GSM Exchange offer")
-                break
-
+                        submitted = True
+                        print("✅ Form submitted using JavaScript click")
+                    except Exception as e2:
+                        print(f"❌ JavaScript click also failed: {e2}")
+                
+                if submitted:
+                    self._capture_step("gsmx_submitted", "Submitted GSM Exchange offer")
+            
             if not submitted:
                 return "Error: Could not submit GSM Exchange offer"
 
