@@ -703,7 +703,7 @@ class Enhanced2FAMarketplacePoster:
         success_indicators = {
             'hubx': ['dashboard', 'inventory', 'sell'],
             'cellpex': ['dashboard', 'listings', 'profile'],
-            'kardof': ['panel', 'listings', 'account'],
+            'kadorf': ['panel', 'listings', 'account'],
             'handlot': ['dashboard', 'inventory', 'account']
         }
         
@@ -716,7 +716,7 @@ class Enhanced2FAMarketplacePoster:
 class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
     """GSM Exchange with 2FA support"""
     PLATFORM = "GSMEXCHANGE"
-    LOGIN_URL = "https://www.gsmexchange.com/signin"
+    LOGIN_URL = "https://www.gsmexchange.com/en/login"
     
     # -------- Anti-bot hardening helpers (stealth + human-like interaction) --------
     def _install_stealth(self) -> None:
@@ -868,6 +868,13 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             
             # Multi-selector fallback chain with diverse selector types
             username_selectors = [
+                (By.CSS_SELECTOR, "form[action*='/en/login'] input#userLogin"),
+                (By.CSS_SELECTOR, "form[action*='/login'] input#userLogin"),
+                (By.ID, "userLogin"),
+                (By.NAME, "userLogin"),
+                (By.CSS_SELECTOR, "input[name='userLogin']"),
+                (By.CSS_SELECTOR, "input#userLogin"),
+                (By.XPATH, "//input[@id='userLogin' or @name='userLogin']"),
                 (By.NAME, "email"),
                 (By.NAME, "username"),
                 (By.ID, "email"),
@@ -902,6 +909,13 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             
             # Multi-selector fallback chain for password field
             password_selectors = [
+                (By.CSS_SELECTOR, "form[action*='/en/login'] input#userPwd"),
+                (By.CSS_SELECTOR, "form[action*='/login'] input#userPwd"),
+                (By.ID, "userPwd"),
+                (By.NAME, "userPwd"),
+                (By.CSS_SELECTOR, "input[name='userPwd']"),
+                (By.CSS_SELECTOR, "input#userPwd"),
+                (By.XPATH, "//input[@id='userPwd' or @name='userPwd']"),
                 (By.NAME, "password"),
                 (By.ID, "password"),
                 (By.CSS_SELECTOR, "input[type='password']"),
@@ -932,12 +946,18 @@ class EnhancedGSMExchangePoster(Enhanced2FAMarketplacePoster):
             
             # Multi-selector fallback chain for submit button
             submit_selectors = [
+                (By.CSS_SELECTOR, "form[action*='/en/login'] button.primary[type='submit']"),
+                (By.CSS_SELECTOR, "form[action*='/login'] button.primary[type='submit']"),
+                (By.CSS_SELECTOR, "form[action*='/login'] button[type='submit']"),
+                (By.CSS_SELECTOR, "button.primary[type='submit']"),
+                (By.CSS_SELECTOR, "button.primary"),
                 (By.NAME, "submit"),
                 (By.ID, "submit"),
                 (By.CSS_SELECTOR, "button[type='submit']"),
                 (By.CSS_SELECTOR, "input[type='submit']"),
                 (By.CSS_SELECTOR, "button[onclick*='login']"),
                 (By.CSS_SELECTOR, "button[onclick*='signin']"),
+                (By.XPATH, "//form[contains(@action, '/login')]//button[@type='submit']"),
                 (By.XPATH, "//button[@type='submit']"),
                 (By.XPATH, "//input[@type='submit']"),
                 (By.XPATH, "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login')]"),
@@ -3768,22 +3788,33 @@ ENHANCED_POSTERS = {
 }
 
 
-class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
-    """Kadorf/Kardof poster using fast, Cellpex-like direct form fill.
+class EnhancedKadorfPoster(Enhanced2FAMarketplacePoster):
+    """Kadorf poster using fast, Cellpex-like direct form fill.
 
     - Optimizes for speed by reducing waits and batching field updates
     - Uses relaxed dropdown matching and resilient submit methods
     - Keeps anti-hallucination: only report success when page indicates it
     """
-    PLATFORM = "KARDOF"
-    LOGIN_URL = "https://www.kardof.com/login"
+    PLATFORM = "KADORF"
+    LOGIN_URL = "https://kadorf.com/login"
 
     def login_with_2fa(self) -> bool:
         """Kadorf simple login - replicate Cellpex's direct approach."""
         driver = self.driver
         driver.get(self.LOGIN_URL)
         self._capture_step("kadorf_login_page", f"Opened login page: {self.LOGIN_URL}")
-        self._dismiss_common_popups(['.cookie', '.modal', '#cookie-banner'])
+        self._dismiss_common_popups(['button.js-cookie-consent-agree.cookie-consent__agree', '.cookie', '.modal', '#cookie-banner'])
+        try:
+            cookie_btn = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.js-cookie-consent-agree.cookie-consent__agree'))
+            )
+            cookie_btn.click()
+            self._capture_step('kadorf_cookie_accept', 'Accepted cookies banner')
+        except TimeoutException:
+            pass
+        except Exception:
+            pass
+
         wait = WebDriverWait(driver, 20)
         
         try:
@@ -3960,9 +3991,9 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
         try:
             # Navigate directly to the posting page
             print("📍 Navigating to Kadorf Sell page...")
-            driver.get("https://www.kardof.com/sell")
+            driver.get("https://kadorf.com/sell")
             self._capture_step("kadorf_sell_page", "Opened Kadorf sell page")
-            self._dismiss_common_popups(['.cookie', '.modal', '#cookie-banner'])
+            self._dismiss_common_popups(['button.js-cookie-consent-agree.cookie-consent__agree', '.cookie', '.modal', '#cookie-banner'])
             
             # Reduced wait for form to load
             time.sleep(1.5)
@@ -4045,7 +4076,7 @@ class EnhancedKardofPoster(Enhanced2FAMarketplacePoster):
 
 
 # Register
-ENHANCED_POSTERS['kardof'] = EnhancedKardofPoster
+ENHANCED_POSTERS['kadorf'] = EnhancedKadorfPoster
 
 
 def test_platform_login_with_2fa(platform_name):
@@ -4096,8 +4127,8 @@ if __name__ == "__main__":
         print("\n🧪 Smoke: open Kadorf Sell page")
         opts = webdriver.ChromeOptions(); opts.add_argument("--window-size=1920,1080")
         drv = webdriver.Chrome(options=opts)
-        poster = EnhancedKardofPoster(drv)
-        drv.get("https://www.kardof.com/sell"); time.sleep(1.5)
+        poster = EnhancedKadorfPoster(drv)
+        drv.get("https://kadorf.com/sell"); time.sleep(1.5)
         poster._capture_step("kadorf_sell_smoke", "Opened Kadorf sell page for smoke test")
     except Exception as e:
         print(f"⚠️  Kadorf smoke open error: {e}")

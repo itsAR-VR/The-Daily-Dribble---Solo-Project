@@ -570,7 +570,7 @@ async def create_single_listing(listing: SingleListingRequest):
     """
     try:
         # Validate platform
-        valid_platforms = ["hubx", "gsmexchange", "kardof", "cellpex", "handlot"]
+        valid_platforms = ["hubx", "gsmexchange", "kadorf", "cellpex", "handlot"]
         if listing.platform not in valid_platforms:
             raise HTTPException(
                 status_code=400,
@@ -642,7 +642,7 @@ async def create_enhanced_listing(request: EnhancedListingRequest):
         platform = request.platform
         
         # Validate platform
-        valid_platforms = ["hubx", "gsmexchange", "kardof", "cellpex", "handlot"]
+        valid_platforms = ["hubx", "gsmexchange", "kadorf", "cellpex", "handlot"]
         if platform not in valid_platforms:
             raise HTTPException(
                 status_code=400,
@@ -719,7 +719,7 @@ async def create_enhanced_listing_with_visual(request: EnhancedListingRequest):
         platform = request.platform
         
         # Validate platform
-        valid_platforms = ["hubx", "gsmexchange", "kardof", "cellpex", "handlot"]
+        valid_platforms = ["hubx", "gsmexchange", "kadorf", "cellpex", "handlot"]
         if platform not in valid_platforms:
             raise HTTPException(
                 status_code=400,
@@ -1001,7 +1001,7 @@ async def create_enhanced_listing_fast(request: EnhancedListingRequest):
         listing_data = request.listing_data
         platform = request.platform
 
-        valid_platforms = ["hubx", "gsmexchange", "kardof", "cellpex", "handlot"]
+        valid_platforms = ["hubx", "gsmexchange", "kadorf", "cellpex", "handlot"]
         if platform not in valid_platforms:
             raise HTTPException(status_code=400, detail=f"Invalid platform: {platform}")
 
@@ -1023,7 +1023,7 @@ async def create_enhanced_listing_fast(request: EnhancedListingRequest):
         chrome_bin_alt = "/usr/bin/google-chrome-stable"
         chrome_can_run = bool(runtime_remote_url) or os.path.exists(chrome_bin_guess) or os.path.exists(chrome_bin_alt)
 
-        if chrome_can_run and platform in ["cellpex", "gsmexchange", "kardof"]:
+        if chrome_can_run and platform in ["cellpex", "gsmexchange", "kadorf"]:
             from selenium import webdriver
             options = webdriver.ChromeOptions()
             options.add_argument("--disable-blink-features=AutomationControlled")
@@ -1830,9 +1830,9 @@ def _collect_platform_status() -> Dict[str, Dict[str, Any]]:
             "login_url": "TBD",
             "last_tested": "Not started"
         },
-        "kardof": {
+        "kadorf": {
             "status": "pending",
-            "credentials_available": bool(os.getenv("KARDOF_USERNAME") and os.getenv("KARDOF_PASSWORD")),
+            "credentials_available": bool(os.getenv("KADORF_USERNAME") and os.getenv("KADORF_PASSWORD")),
             "2fa_implemented": False,
             "login_url": "TBD", 
             "last_tested": "Not started"

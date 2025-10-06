@@ -203,12 +203,13 @@ PLATFORM_CONFIGS = {
             'submit': ['button[type="submit"]']
         }
     },
-    'kardof': {
-        'login_url': 'https://www.kardof.com/login',
+    'kadorf': {
+        'login_url': 'https://kadorf.com/login',
         'selectors': {
-            'username': ['input[name="username"]', 'input[name="email"]'],
-            'password': ['input[name="password"]'],
-            'submit': ['button[type="submit"]']
+            'username': ['input#email', 'input[name="email"]'],
+            'password': ['input#password', 'input[name="password"]'],
+            'submit': ['input.y-button[type="submit"]'],
+            'cookie_accept': ['button.js-cookie-consent-agree.cookie-consent__agree']
         }
     },
     'handlot': {

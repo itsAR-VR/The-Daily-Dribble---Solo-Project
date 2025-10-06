@@ -23,10 +23,10 @@ REQUIRED_CREDENTIALS = {
         'password_var': 'CELLPEX_PASSWORD',
         'description': 'Cellpex marketplace credentials'
     },
-    'kardof': {
-        'username_var': 'KARDOF_USERNAME',
-        'password_var': 'KARDOF_PASSWORD', 
-        'description': 'Kardof marketplace credentials'
+    'kadorf': {
+        'username_var': 'KADORF_USERNAME',
+        'password_var': 'KADORF_PASSWORD', 
+        'description': 'Kadorf marketplace credentials'
     },
     'hubx': {
         'username_var': 'HUBX_USERNAME',
@@ -168,7 +168,7 @@ def test_live_2fa_workflow(platform):
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: python test_live_2fa_workflow.py <platform>")
-        print("Platforms: gsmexchange, cellpex, kardof, hubx, handlot")
+        print("Platforms: gsmexchange, cellpex, kadorf, hubx, handlot")
         sys.exit(1)
     
     platform = sys.argv[1].lower()

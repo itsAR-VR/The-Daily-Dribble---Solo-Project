@@ -9,7 +9,7 @@ with success or error messages in a ``Status`` column.
 Platforms supported (via subclasses of :class:`MarketplacePoster`):     
     - Hubx
     - GSMExchange
-    - Kardof
+    - Kadorf
     - Cellpex
     - Handlot
     - LinkedIn
@@ -159,13 +159,45 @@ class GSMExchangePoster(MarketplacePoster):
             return f"Error: {exc}"
 
 
-class KardofPoster(MarketplacePoster):
-    PLATFORM = "KARDOF"
-    LOGIN_URL = "https://www.kardof.com/login"
+class KadorfPoster(MarketplacePoster):
+    PLATFORM = "KADORF"
+    LOGIN_URL = "https://kadorf.com/login"
+
+    def login(self) -> None:
+        driver = self.driver
+        driver.get(self.LOGIN_URL)
+        wait = WebDriverWait(driver, 20)
+
+        try:
+            cookie_button = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable(
+                    (By.CSS_SELECTOR, "button.js-cookie-consent-agree.cookie-consent__agree")
+                )
+            )
+            cookie_button.click()
+        except TimeoutException:
+            pass
+        except Exception:
+            pass
+
+        email_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input#email")))
+        email_field.clear()
+        email_field.send_keys(self.username)
+
+        password_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input#password")))
+        password_field.clear()
+        password_field.send_keys(self.password)
+
+        submit = wait.until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "input.y-button[type='submit']"))
+        )
+        submit.click()
+
+        wait.until(lambda d: "login" not in d.current_url.lower())
 
     def post_listing(self, row: pd.Series) -> str:
         driver = self.driver
-        driver.get("https://www.kardof.com/sell")
+        driver.get("https://kadorf.com/sell")
         wait = WebDriverWait(driver, 20)
         try:
             wait.until(EC.presence_of_element_located((By.NAME, "title"))).send_keys(
@@ -180,8 +212,12 @@ class KardofPoster(MarketplacePoster):
             wait.until(EC.presence_of_element_located((By.NAME, "price"))).send_keys(
                 str(row.get("price", ""))
             )
-            wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit']"))).click()
-            wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(),'Success')]")))
+            wait.until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "input.y-button[type='submit']"))
+            ).click()
+            wait.until(
+                EC.presence_of_element_located((By.XPATH, "//*[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'success')]"))
+            )
             return "Success"
         except TimeoutException:
             return "Timed out posting listing"
@@ -284,7 +320,7 @@ POSTER_MAP: Dict[str, Type[MarketplacePoster]] = {
     for cls in [
         HubxPoster,
         GSMExchangePoster,
-        KardofPoster,
+        KadorfPoster,
         CellpexPoster,
         HandlotPoster,
         # LinkedInPoster,  # Temporarily disabled

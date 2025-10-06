@@ -27,9 +27,9 @@ PLATFORMS = {
         'subject_keywords': ['verification', 'code', 'login', 'security'],
         'test_enabled': True
     },
-    'kardof': {
-        'name': 'Kardof',
-        'email_patterns': ['noreply@kardof.com', 'support@kardof.com'],
+    'kadorf': {
+        'name': 'Kadorf',
+        'email_patterns': ['noreply@kadorf.com', 'support@kadorf.com'],
         'subject_keywords': ['verification', 'code', 'login', 'security'],
         'test_enabled': True
     },

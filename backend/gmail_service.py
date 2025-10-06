@@ -195,7 +195,7 @@ class GmailService:
             platform_queries = {
                 'gsmexchange': 'from:gsmexchange.com',
                 'cellpex': 'from:cellpex.com',
-                'kardof': 'from:kardof.com',
+                'kadorf': 'from:kadorf.com',
                 'hubx': 'from:hubx.com',
                 'handlot': 'from:handlot.com'
             }

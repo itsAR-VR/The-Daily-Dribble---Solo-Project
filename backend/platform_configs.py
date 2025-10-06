@@ -106,23 +106,23 @@ PLATFORM_CONFIGS = {
         }
     },
     
-    'kardof': {
-        'name': 'Kardof',
-        'base_url': 'https://www.kardof.com',
+    'kadorf': {
+        'name': 'Kadorf',
+        'base_url': 'https://kadorf.com',
         'login': {
-            'url': 'https://www.kardof.com/login',
+            'url': 'https://kadorf.com/login',
             'selectors': {
-                'username': 'input[name="username"]',
-                'password': 'input[name="password"]',
-                'submit': 'button[type="submit"]'
+                'username': 'input#email',
+                'password': 'input#password',
+                'submit': 'input.y-button[type="submit"]',
+                'cookie_accept': 'button.js-cookie-consent-agree.cookie-consent__agree'
             }
         },
         'has_2fa': None,  # To be tested
         '2fa_method': None,
         'listing': {
             'urls': [
-                'https://www.kardof.com/add-listing',
-                'https://www.kardof.com/sell'
+                'https://kadorf.com/sell'
             ],
             'selectors': {
                 'product_name': ['input[name="title"]'],
@@ -138,7 +138,7 @@ PLATFORM_CONFIGS = {
             'delay_between_listings': 5
         }
     },
-    
+
     'handlot': {
         'name': 'Handlot',
         'base_url': 'https://www.handlot.com',
